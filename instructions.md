@@ -1,0 +1,3 @@
+- Implement project-vox.md
+- Before every action, read status.md. After every action, update status.md with what you just did and what is left to do.
+- If a SOTA paper is used as core concept to the implementation, quote it down in the references.md file.
