@@ -1,5 +1,38 @@
 # Vox dev environment — status tracker
 
+## 2026-04-18 — PR 6: TTS bootstrap + word highlight + playback bar
+
+### Done
+- **TTS engine interface + events.** New `lib/tts/tts_engine.dart` — sealed `TtsEvent` hierarchy (`TtsStarted`/`TtsBoundary(startChar,endChar)`/`TtsCompleted`/`TtsPaused`/`TtsCancelled`/`TtsError`) + abstract `TtsEngine { events, speak, pause, resume, stop, setRate, dispose }`. Keeps the reader decoupled from any one TTS package.
+- **Engine implementations.** `lib/tts/noop_tts_engine.dart` for tests / unsupported platforms. `lib/tts/flutter_tts_engine.dart` wraps `flutter_tts ^4.2.0` — wires start/completion/pause/cancel/error/progress handlers (progress → `TtsBoundary`), emits to a broadcast stream, uses `awaitSpeakCompletion(true)`. Added `flutter_tts` to `pubspec.yaml`.
+- **PlaybackController.** New `lib/tts/playback_controller.dart` — `ChangeNotifier` owning `_blocks`, `_pages`, `_wordRangesByBlock` (via `RegExp(r'\S+')`), `_cursorBlockIndex`/`_cursorCharOffset`, `_currentWordRange`, `_wordsPerSecond` (EMA α=0.3 after 30 words + 20 s of observed speech). Commands: `togglePlayPause`, `play`, `pause`, `stop`, `seek(Duration)` (converts to words via WPS, stops engine, advances/rewinds, re-speaks if was playing), `jumpToBlock`, `updateBlocks`, `updatePages`. Skips `BlockKind.blank` + empty blocks on playback. Exposes `wordsSpoken`, `progress`, `elapsed`, `estimatedTotal`, `atStart`, `atEnd`.
+- **Paginator piece offsets.** `PagePiece` gained `blockCharOffset`, `ReaderPage` gained `pieceBlockIndexes: List<int?>` (parallel to `pieces`, `null` for blank spacers). Paragraph splits now track `consumed = text.length - split.$2.length` so the second piece's characters still map back into the source block — required for word highlighting across page breaks.
+- **Reader highlight.** `ReaderPageView` accepts `highlightBlockIndex` + `highlightRange`. For the paragraph piece that owns the currently-spoken word, renders `SelectableText.rich` with three `TextSpan`s (before / highlight / after), the middle span using `TextStyle(backgroundColor: primary.withValues(alpha: 0.22))`. Other pieces keep the cheap `SelectableText` path.
+- **PlaybackBar.** New `lib/views/reader/playback_bar.dart` — thin progress bar + elapsed/estimated time labels, then five `IconButton`s in a row: `skip_previous` (Previous page) · `replay_10` (Replay 10 seconds) · `play_circle`/`pause_circle` (Play/Pause, 36 px) · `forward_10` (Forward 10 seconds) · `skip_next` (Next page). Built with `AnimatedBuilder` listening to the controller so labels/icons stay in sync.
+- **BookView wiring.** `BookView` takes a `TtsEngine` and owns a `PlaybackController`. Blocks are pushed into the controller on load; pages are pushed on every `_paginate` call (identity-check guard avoids stomping the cursor on repeated builds). PageView is wrapped in `AnimatedBuilder(animation: _playback)` so the highlight re-paints on boundary events. Auto-follow: when the cursor crosses a page boundary, PageView `animateToPage`s to the spread containing the block; tapping Previous/Next page suspends auto-follow for 600 ms so the user's jump sticks. Bar lives in `bottomNavigationBar` and fades with the AppBar (`AnimatedOpacity + IgnorePointer`, same `_chromeVisible` toggle).
+- **Engine plumbed through the tree.** `VoxApp` + `AppShell` accept an optional `TtsEngine`, default to `NoopTtsEngine` (test-safe). `main.dart` constructs `FlutterTtsEngine()` for real runs. Engine is owned by `_VoxAppState` and disposed with the app.
+- **Tests.** New `test/playback_controller_test.dart` (7 cases: totalWords, `seek(+10s) = 25` words at default WPS, `seek(-10s)` clamp, cross-block seek, `TtsCompleted` advances past blanks, `updatePages` preserves cursor, `TtsBoundary` advances offset). New `test/reader_page_view_test.dart` (plain paragraph path; 3-span highlight; split-piece highlight respects `blockCharOffset`). New `test/playback_bar_test.dart` (all five icons render; play ↔ pause toggle; previous/next don't call `speak`; forward_10 advances; replay_10 rewinds). `test/paginator_test.dart` updated for the new `ReaderPage` constructor + a "second piece has offset" case.
+- Verified locally: `flutter analyze` (no errors), `flutter test` (44/44 pass).
+
+### Not yet done
+- Windows desktop build still blocked by the MSVC linker errors from PR 3 (environment, not code) — so real-device TTS hasn't been exercised here yet.
+- Android toolchain — end-term goal.
+- TTS rate exposure in the settings sheet — still ties to `FlutterTts.setSpeechRate` but no UI control yet; the EMA handles the feedback loop.
+
+### Next up — PR 7
+- Hook TTS rate into the reader settings sheet; surface a "reading speed" slider that calls `engine.setRate` + re-seeds `initialWordsPerSecond`.
+- Per-book persisted cursor (block + char offset) so resume restores mid-paragraph, not just the spread.
+- Cross-platform voice pick (locale + voice name), remembered in settings.
+
+### Remaining Early-development (Setting-Focused) work — from `project.md`
+- Two-page layout ✅ (PR 5) · chapter + subchapter list ✅ (PR 5) · remember last book and page ✅ (PR 5, spread-level) · font/theme picker ✅ (PR 5) · fade-off chrome ✅ (PR 5, now also fades the playback bar) · delete/rename ✅ (PR 5).
+- Word-by-word TTS highlighting ✅ (PR 6).
+- Play/pause and ±10 s seek ✅ (PR 6).
+- Page advance/retreat without stopping TTS ✅ (PR 6 — page buttons suspend auto-follow without calling stop/speak).
+- Reading-speed progress indicator ✅ (PR 6 — EMA-driven `elapsed` + `estimatedTotal` on the bar).
+
+---
+
 ## 2026-04-18 — PR 5: two-page reader + line-break fix + bundled early-dev items
 
 ### Done

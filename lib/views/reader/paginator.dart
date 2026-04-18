@@ -54,27 +54,50 @@ class ReaderTextStyles {
 }
 
 class PagePiece {
-  const PagePiece({required this.kind, required this.text});
+  const PagePiece({
+    required this.kind,
+    required this.text,
+    this.blockCharOffset,
+  });
 
   final BlockKind kind;
   final String text;
 
+  /// Offset of this piece's text within the full source block. `0` for
+  /// headings, the accumulated prefix length for paragraphs split across
+  /// pages, and `null` for blank spacers (which carry no text).
+  final int? blockCharOffset;
+
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
-      (other is PagePiece && other.kind == kind && other.text == text);
+      (other is PagePiece &&
+          other.kind == kind &&
+          other.text == text &&
+          other.blockCharOffset == blockCharOffset);
 
   @override
-  int get hashCode => Object.hash(kind, text);
+  int get hashCode => Object.hash(kind, text, blockCharOffset);
 
   @override
-  String toString() => 'PagePiece(${kind.name}, "$text")';
+  String toString() =>
+      'PagePiece(${kind.name}, "$text", offset=$blockCharOffset)';
 }
 
 class ReaderPage {
-  const ReaderPage({required this.pieces, required this.blockIndexes});
+  const ReaderPage({
+    required this.pieces,
+    required this.pieceBlockIndexes,
+    required this.blockIndexes,
+  });
 
   final List<PagePiece> pieces;
+
+  /// One entry per piece, parallel to [pieces]. `null` for `BlockKind.blank`
+  /// spacers (which don't belong to a source block).
+  final List<int?> pieceBlockIndexes;
+
+  /// Unique, sorted set of source block indexes that contributed to the page.
   final List<int> blockIndexes;
 }
 
@@ -89,6 +112,7 @@ List<ReaderPage> paginateBlocks({
 
   final pages = <ReaderPage>[];
   var pieces = <PagePiece>[];
+  var pieceBlockIndexes = <int?>[];
   var blockIndexes = <int>{};
   var usedHeight = 0.0;
 
@@ -96,9 +120,11 @@ List<ReaderPage> paginateBlocks({
     if (pieces.isEmpty) return;
     pages.add(ReaderPage(
       pieces: List.unmodifiable(pieces),
+      pieceBlockIndexes: List.unmodifiable(pieceBlockIndexes),
       blockIndexes: (blockIndexes.toList()..sort()),
     ));
     pieces = <PagePiece>[];
+    pieceBlockIndexes = <int?>[];
     blockIndexes = <int>{};
     usedHeight = 0;
   }
@@ -118,7 +144,12 @@ List<ReaderPage> paginateBlocks({
         if (height > remaining() && pieces.isNotEmpty) {
           finalize();
         }
-        pieces.add(PagePiece(kind: block.kind, text: block.text));
+        pieces.add(PagePiece(
+          kind: block.kind,
+          text: block.text,
+          blockCharOffset: 0,
+        ));
+        pieceBlockIndexes.add(i);
         blockIndexes.add(i);
         usedHeight += height;
         break;
@@ -131,24 +162,35 @@ List<ReaderPage> paginateBlocks({
           continue;
         }
         pieces.add(const PagePiece(kind: BlockKind.blank, text: ''));
+        pieceBlockIndexes.add(null);
         usedHeight += gap;
         break;
 
       case BlockKind.paragraph:
         var text = block.text;
+        var offsetIntoBlock = 0;
         while (text.isNotEmpty) {
           final full = _measureHeight(text, styles.paragraph, pageSize.width);
           final room = remaining();
           if (full <= room) {
-            pieces.add(PagePiece(kind: BlockKind.paragraph, text: text));
+            pieces.add(PagePiece(
+              kind: BlockKind.paragraph,
+              text: text,
+              blockCharOffset: offsetIntoBlock,
+            ));
+            pieceBlockIndexes.add(i);
             blockIndexes.add(i);
             usedHeight += full;
             text = '';
             break;
           }
           if (pieces.isEmpty && room <= 0) {
-            // Degenerate: page is too small even empty; avoid infinite loop.
-            pieces.add(PagePiece(kind: BlockKind.paragraph, text: text));
+            pieces.add(PagePiece(
+              kind: BlockKind.paragraph,
+              text: text,
+              blockCharOffset: offsetIntoBlock,
+            ));
+            pieceBlockIndexes.add(i);
             blockIndexes.add(i);
             finalize();
             text = '';
@@ -164,9 +206,16 @@ List<ReaderPage> paginateBlocks({
             finalize();
             continue;
           }
-          pieces.add(PagePiece(kind: BlockKind.paragraph, text: split.$1));
+          pieces.add(PagePiece(
+            kind: BlockKind.paragraph,
+            text: split.$1,
+            blockCharOffset: offsetIntoBlock,
+          ));
+          pieceBlockIndexes.add(i);
           blockIndexes.add(i);
           finalize();
+          final consumed = text.length - split.$2.length;
+          offsetIntoBlock += consumed;
           text = split.$2;
         }
         break;

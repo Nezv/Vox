@@ -69,12 +69,32 @@ void main() {
     expect(pages.first.pieces.first.kind, BlockKind.paragraph);
   });
 
+  test('split paragraph second piece has offset into source block', () {
+    final long = List.filled(300, 'word').join(' ');
+    final blocks = [Block(BlockKind.paragraph, long)];
+    final pages = paginateBlocks(
+      blocks: blocks,
+      pageSize: const Size(300, 150),
+      styles: styles,
+    );
+    expect(pages.length, greaterThan(1));
+    expect(pages.first.pieces.first.blockCharOffset, 0);
+    final secondPiece = pages[1].pieces.first;
+    expect(secondPiece.blockCharOffset, isNotNull);
+    expect(secondPiece.blockCharOffset, greaterThan(0));
+    expect(
+      long.substring(secondPiece.blockCharOffset!,
+          secondPiece.blockCharOffset! + secondPiece.text.length),
+      secondPiece.text,
+    );
+  });
+
   test('findSpreadForBlock returns the correct spread index', () {
     const pages = [
-      ReaderPage(pieces: [], blockIndexes: [0, 1]),
-      ReaderPage(pieces: [], blockIndexes: [2]),
-      ReaderPage(pieces: [], blockIndexes: [3]),
-      ReaderPage(pieces: [], blockIndexes: [4]),
+      ReaderPage(pieces: [], pieceBlockIndexes: [], blockIndexes: [0, 1]),
+      ReaderPage(pieces: [], pieceBlockIndexes: [], blockIndexes: [2]),
+      ReaderPage(pieces: [], pieceBlockIndexes: [], blockIndexes: [3]),
+      ReaderPage(pieces: [], pieceBlockIndexes: [], blockIndexes: [4]),
     ];
     expect(findSpreadForBlock(pages: pages, blockIndex: 0, pagesPerSpread: 2), 0);
     expect(findSpreadForBlock(pages: pages, blockIndex: 2, pagesPerSpread: 2), 0);

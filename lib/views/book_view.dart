@@ -9,8 +9,11 @@ import '../core/reader_settings.dart';
 import '../core/theme/theme_controller.dart';
 import '../data/book_content_repository.dart';
 import '../models/book.dart';
+import '../tts/playback_controller.dart';
+import '../tts/tts_engine.dart';
 import 'error_state.dart';
 import 'reader/paginator.dart';
+import 'reader/playback_bar.dart';
 import 'reader/reader_page_view.dart';
 import 'reader/reader_settings_sheet.dart';
 
@@ -29,6 +32,7 @@ class BookView extends StatefulWidget {
     required this.repository,
     required this.settings,
     required this.theme,
+    required this.ttsEngine,
     this.initialPage = 0,
     this.onPageChanged,
   });
@@ -38,6 +42,7 @@ class BookView extends StatefulWidget {
   final BookContentRepository repository;
   final ReaderSettings settings;
   final ThemeController theme;
+  final TtsEngine ttsEngine;
   final int initialPage;
   final ValueChanged<int>? onPageChanged;
 
@@ -60,12 +65,18 @@ class _BookViewState extends State<BookView> {
   bool _chromeVisible = true;
   Timer? _fadeTimer;
 
+  late final PlaybackController _playback;
+  bool _autoFollow = true;
+  Timer? _autoFollowRearmTimer;
+
   @override
   void initState() {
     super.initState();
     _currentSpread = widget.initialPage;
     widget.settings.addListener(_onSettingsChanged);
     widget.theme.addListener(_onSettingsChanged);
+    _playback = PlaybackController(engine: widget.ttsEngine);
+    _playback.addListener(_onPlaybackChanged);
     _load();
   }
 
@@ -93,8 +104,12 @@ class _BookViewState extends State<BookView> {
   @override
   void dispose() {
     _fadeTimer?.cancel();
+    _autoFollowRearmTimer?.cancel();
     widget.settings.removeListener(_onSettingsChanged);
     widget.theme.removeListener(_onSettingsChanged);
+    _playback.removeListener(_onPlaybackChanged);
+    widget.ttsEngine.stop();
+    _playback.dispose();
     _controller?.dispose();
     super.dispose();
   }
@@ -121,6 +136,7 @@ class _BookViewState extends State<BookView> {
         _loading = false;
         _pageCacheKey = null;
       });
+      _playback.updateBlocks(blocks);
       _armFadeTimer();
     } catch (e) {
       if (!mounted) return;
@@ -195,6 +211,55 @@ class _BookViewState extends State<BookView> {
     _armFadeTimer();
   }
 
+  void _onPlaybackChanged() {
+    if (!_autoFollow) return;
+    final pages = _playback.pages;
+    if (pages.isEmpty) return;
+    final idx = _playback.cursorBlockIndex;
+    final spread = findSpreadForBlock(
+      pages: pages,
+      blockIndex: idx,
+      pagesPerSpread: _pagesPerSpread,
+    );
+    if (spread != _currentSpread &&
+        (_controller?.hasClients ?? false)) {
+      _controller!.animateToPage(
+        spread,
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeOut,
+      );
+    }
+  }
+
+  void _suspendAutoFollow() {
+    _autoFollow = false;
+    _autoFollowRearmTimer?.cancel();
+    _autoFollowRearmTimer = Timer(const Duration(milliseconds: 600), () {
+      if (mounted) _autoFollow = true;
+    });
+  }
+
+  void _previousPage() {
+    _suspendAutoFollow();
+    if (!(_controller?.hasClients ?? false)) return;
+    final target = (_currentSpread - 1).clamp(0, 1 << 30);
+    _controller!.animateToPage(
+      target,
+      duration: const Duration(milliseconds: 200),
+      curve: Curves.easeOut,
+    );
+  }
+
+  void _nextPage() {
+    _suspendAutoFollow();
+    if (!(_controller?.hasClients ?? false)) return;
+    _controller!.animateToPage(
+      _currentSpread + 1,
+      duration: const Duration(milliseconds: 200),
+      curve: Curves.easeOut,
+    );
+  }
+
   void _armFadeTimer() {
     _fadeTimer?.cancel();
     if (!_chromeVisible) return;
@@ -263,6 +328,7 @@ class _BookViewState extends State<BookView> {
     );
     final barHeight = bar.preferredSize.height;
     final showChrome = _chromeVisible || _loading || _error != null;
+    final showPlaybackBar = !_loading && _error == null && _blocks.isNotEmpty;
 
     return Scaffold(
       appBar: PreferredSize(
@@ -275,6 +341,20 @@ class _BookViewState extends State<BookView> {
       ),
       endDrawer: _toc.isEmpty ? null : _buildTocDrawer(context),
       body: SafeArea(top: false, child: _buildBody(context)),
+      bottomNavigationBar: !showPlaybackBar
+          ? null
+          : AnimatedOpacity(
+              opacity: showChrome ? 1.0 : 0.0,
+              duration: _fadeDuration,
+              child: IgnorePointer(
+                ignoring: !showChrome,
+                child: PlaybackBar(
+                  controller: _playback,
+                  onPreviousPage: _previousPage,
+                  onNextPage: _nextPage,
+                ),
+              ),
+            ),
     );
   }
 
@@ -313,19 +393,25 @@ class _BookViewState extends State<BookView> {
         final spreadCount =
             (pages.length / _pagesPerSpread).ceil().clamp(1, 1 << 30);
         _ensureController(spreadCount);
+        if (!identical(_playback.pages, pages)) {
+          _playback.updatePages(pages);
+        }
 
         return GestureDetector(
           behavior: HitTestBehavior.translucent,
           onTap: _toggleChrome,
-          child: PageView.builder(
-            controller: _controller,
-            itemCount: spreadCount,
-            onPageChanged: _onSpreadChanged,
-            itemBuilder: (context, spreadIndex) => _buildSpread(
-              spreadIndex: spreadIndex,
-              pages: pages,
-              styles: styles,
-              pageWidth: pageWidth,
+          child: AnimatedBuilder(
+            animation: _playback,
+            builder: (context, _) => PageView.builder(
+              controller: _controller,
+              itemCount: spreadCount,
+              onPageChanged: _onSpreadChanged,
+              itemBuilder: (context, spreadIndex) => _buildSpread(
+                spreadIndex: spreadIndex,
+                pages: pages,
+                styles: styles,
+                pageWidth: pageWidth,
+              ),
             ),
           ),
         );
@@ -341,6 +427,8 @@ class _BookViewState extends State<BookView> {
   }) {
     final firstPageIndex = spreadIndex * _pagesPerSpread;
     final children = <Widget>[];
+    final highlightBlock = _playback.cursorBlockIndex;
+    final highlightRange = _playback.currentWordRange;
     for (var i = 0; i < _pagesPerSpread; i++) {
       final pageIndex = firstPageIndex + i;
       final pageWidget = SizedBox(
@@ -350,6 +438,8 @@ class _BookViewState extends State<BookView> {
                 page: pages[pageIndex],
                 styles: styles,
                 padding: _pagePadding,
+                highlightBlockIndex: highlightBlock,
+                highlightRange: highlightRange,
               )
             : const SizedBox.shrink(),
       );

@@ -8,6 +8,8 @@ import 'data/book_content_repository.dart';
 import 'data/library_repository.dart';
 import 'data/reading_state_repository.dart';
 import 'models/book.dart';
+import 'tts/noop_tts_engine.dart';
+import 'tts/tts_engine.dart';
 import 'views/book_view.dart';
 import 'views/library_view.dart';
 
@@ -19,6 +21,7 @@ class VoxApp extends StatefulWidget {
     this.readingStateRepository,
     this.themeController,
     this.readerSettings,
+    this.ttsEngine,
   });
 
   final LibraryRepository? repository;
@@ -26,6 +29,7 @@ class VoxApp extends StatefulWidget {
   final ReadingStateRepository? readingStateRepository;
   final ThemeController? themeController;
   final ReaderSettings? readerSettings;
+  final TtsEngine? ttsEngine;
 
   @override
   State<VoxApp> createState() => _VoxAppState();
@@ -42,14 +46,17 @@ class _VoxAppState extends State<VoxApp> {
       widget.contentRepository ?? const FileSystemBookContentRepository();
   late final ReadingStateRepository _stateRepository =
       widget.readingStateRepository ?? FileSystemReadingStateRepository();
+  late final TtsEngine _ttsEngine = widget.ttsEngine ?? NoopTtsEngine();
 
   late final bool _ownsTheme = widget.themeController == null;
   late final bool _ownsSettings = widget.readerSettings == null;
+  late final bool _ownsTts = widget.ttsEngine == null;
 
   @override
   void dispose() {
     if (_ownsTheme) _theme.dispose();
     if (_ownsSettings) _settings.dispose();
+    if (_ownsTts) _ttsEngine.dispose();
     super.dispose();
   }
 
@@ -68,6 +75,7 @@ class _VoxAppState extends State<VoxApp> {
             stateRepository: _stateRepository,
             theme: _theme,
             settings: _settings,
+            ttsEngine: _ttsEngine,
           ),
         );
       },
@@ -85,6 +93,7 @@ class AppShell extends StatefulWidget {
     required this.stateRepository,
     required this.theme,
     required this.settings,
+    required this.ttsEngine,
   });
 
   final LibraryRepository repository;
@@ -92,6 +101,7 @@ class AppShell extends StatefulWidget {
   final ReadingStateRepository stateRepository;
   final ThemeController theme;
   final ReaderSettings settings;
+  final TtsEngine ttsEngine;
 
   @override
   State<AppShell> createState() => _AppShellState();
@@ -174,6 +184,7 @@ class _AppShellState extends State<AppShell> {
           repository: widget.contentRepository,
           settings: widget.settings,
           theme: widget.theme,
+          ttsEngine: widget.ttsEngine,
           initialPage: _initialPage,
           onPageChanged: _onPageChanged,
         );
