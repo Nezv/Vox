@@ -4,6 +4,7 @@ import 'package:path/path.dart' as p;
 import '../core/constants.dart';
 import '../data/library_repository.dart';
 import '../models/book.dart';
+import 'error_state.dart';
 
 class LibraryView extends StatefulWidget {
   const LibraryView({
@@ -78,7 +79,11 @@ class _LibraryViewState extends State<LibraryView> {
       return const Center(child: CircularProgressIndicator());
     }
     if (_error != null) {
-      return _ErrorState(error: _error!, onRetry: _load);
+      return ErrorState(
+        error: _error!,
+        onRetry: _load,
+        title: "Couldn't load library",
+      );
     }
     if (_books.isEmpty) {
       return _EmptyState(
@@ -138,29 +143,3 @@ class _EmptyState extends StatelessWidget {
   }
 }
 
-class _ErrorState extends StatelessWidget {
-  const _ErrorState({required this.error, required this.onRetry});
-
-  final Object error;
-  final VoidCallback onRetry;
-
-  @override
-  Widget build(BuildContext context) {
-    final textTheme = Theme.of(context).textTheme;
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text("Couldn't load library", style: textTheme.headlineMedium),
-            const SizedBox(height: 12),
-            Text('$error', style: textTheme.bodyMedium),
-            const SizedBox(height: 24),
-            TextButton(onPressed: onRetry, child: const Text('Retry')),
-          ],
-        ),
-      ),
-    );
-  }
-}

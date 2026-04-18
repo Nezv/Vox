@@ -1,5 +1,26 @@
 # Vox dev environment — status tracker
 
+## 2026-04-18 — PR 4: render selected book content
+
+### Done
+- `lib/core/markdown/block_parser.dart` — hand-rolled minimal parser. `Block { BlockKind kind, String text }` with value-equality; `parseMarkdownBlocks(source)` handles `#`/`##`/`###` headings, paragraph joins (consecutive non-blank lines → one block), and blank-line collapse (runs of blanks → one `BlockKind.blank`). No inline emphasis / lists / links — those arrive with the reader-formatting PR.
+- `lib/data/book_content_repository.dart` — `BookContentRepository` interface + `FileSystemBookContentRepository` that `await File(path).readAsString()`. Mirrors the `LibraryRepository` shape for test injection.
+- `lib/views/error_state.dart` — lifted the old `_ErrorState` out of `library_view.dart` so `BookView` and `LibraryView` share one widget (custom title prop).
+- `lib/views/book_view.dart` — now a `StatefulWidget`. `initState` → `_load()` reads content via the repo and parses into blocks. Four states: loading spinner, error (shared `ErrorState` with Retry, title "Couldn't open book"), empty (`Text('Empty book')` when no non-blank blocks), loaded (`ListView.builder` with `EdgeInsets.symmetric(horizontal: 32, vertical: 24)` padding, rendering h1/h2/h3 as scaled `Text`, paragraphs as `SelectableText` so quotes can be copied, blanks as 16 px spacers). AppBar and back-arrow tooltip unchanged so the round-trip test still works.
+- `lib/app.dart` — `VoxApp` now takes an optional `BookContentRepository` (defaults to `FileSystemBookContentRepository()`), threaded through `AppShell` into `BookView`.
+- `test/block_parser_test.dart` — 7 unit tests covering empty input, heading levels, paragraph joining, blank-line collapse, heading-between-paragraphs, 4-hash fallback, and trailing-blank trimming.
+- `test/widget_test.dart` — added `_FakeContentRepo` with an `errors` map + read counter. Round-trip test now asserts parsed content (`First para.`, `Section`, `Second para.`) renders. New tests: error state + Retry re-invokes `read`; empty `.md` shows the "Empty book" hint.
+- Verified locally: `flutter analyze` (no issues), `flutter test` (12/12 pass).
+
+### Not yet done
+- Windows desktop build still blocked by the MSVC linker errors from PR 3 (unrelated to this PR's code).
+- Android toolchain — end-term goal.
+
+### Next up — PR 5
+- Pick from the Early-development list — strongest candidates are the two-page read layout (sweeping two pages at a time) or the chapter + subchapter list parsed from the `.md`. Defer the exact pick to the PR 5 `/ultraplan`.
+
+---
+
 ## 2026-04-18 — PR 3: library lists `.md` books from a folder
 
 ### Done
@@ -18,11 +39,8 @@
 - Android runner still not generated locally (no Android toolchain installed). Android support stays an end-term goal per project.md.
 - Persisting the chosen folder across launches — arrives with the "remember last book and page" bullet.
 
-### Next up — PR 4
-- **Render book content.** Load the selected `.md` from disk, parse it, and display. Start minimal: plain-text scroll view with `flutter_markdown` (or a hand-rolled parser if we want to keep deps tight). Still no TTS, no two-page layout, no chapter list.
-
 ### Remaining Early-development (Setting-Focused) work — from `project.md`
-- Delete / rename / organize books (listing half is now done — PR 3).
+- Delete / rename / organize books (listing half done in PR 3; render half done in PR 4).
 - Two-page read layout that fills most of the screen, sweeping two pages at a time.
 - Word-by-word TTS highlighting.
 - Time + progress feedback considering reading speed.
