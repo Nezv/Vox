@@ -1,0 +1,42 @@
+# Flutter / Dart
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+.pub-cache/
+.pub/
+build/
+pubspec.lock
+
+# IDEs
+.idea/
+.vscode/
+*.iml
+*.iws
+*.ipr
+
+# Claude Code personal settings (keep team settings.json checked in if added later)
+.claude/settings.local.json
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Platform build artifacts (kept out until `flutter create .` is run)
+android/.gradle/
+android/local.properties
+android/app/build/
+android/build/
+ios/Pods/
+ios/.symlinks/
+ios/Flutter/flutter_export_environment.sh
+ios/Flutter/Generated.xcconfig
+ios/Flutter/App.framework/
+ios/Flutter/Flutter.framework/
+windows/flutter/ephemeral/
+linux/flutter/ephemeral/
+macos/Flutter/ephemeral/
+
+# Logs / misc
+*.log
+coverage/
