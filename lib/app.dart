@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'core/constants.dart';
 import 'core/theme/app_theme.dart';
 import 'core/theme/theme_controller.dart';
+import 'views/book_view.dart';
+import 'views/library_view.dart';
 
 class VoxApp extends StatefulWidget {
   const VoxApp({super.key});
@@ -29,60 +31,34 @@ class _VoxAppState extends State<VoxApp> {
           title: kAppTitle,
           debugShowCheckedModeBanner: false,
           theme: AppTheme.themeFor(_theme.mode),
-          home: HomeScaffold(controller: _theme),
+          home: const AppShell(),
         );
       },
     );
   }
 }
 
-class HomeScaffold extends StatelessWidget {
-  const HomeScaffold({super.key, required this.controller});
+enum View { library, book }
 
-  final ThemeController controller;
+class AppShell extends StatefulWidget {
+  const AppShell({super.key});
+
+  @override
+  State<AppShell> createState() => _AppShellState();
+}
+
+class _AppShellState extends State<AppShell> {
+  View _view = View.library;
+
+  void _go(View next) => setState(() => _view = next);
 
   @override
   Widget build(BuildContext context) {
-    final textTheme = Theme.of(context).textTheme;
-    return Scaffold(
-      appBar: AppBar(title: const Text(kAppTitle)),
-      body: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(32),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                'dev environment — scaffold',
-                style: textTheme.bodyLarge,
-              ),
-              const SizedBox(height: 32),
-              SegmentedButton<AppThemeMode>(
-                segments: const [
-                  ButtonSegment(
-                    value: AppThemeMode.light,
-                    label: Text('Light'),
-                    icon: Icon(Icons.light_mode_outlined),
-                  ),
-                  ButtonSegment(
-                    value: AppThemeMode.dark,
-                    label: Text('Dark'),
-                    icon: Icon(Icons.dark_mode_outlined),
-                  ),
-                  ButtonSegment(
-                    value: AppThemeMode.sepia,
-                    label: Text('Sepia'),
-                    icon: Icon(Icons.menu_book_outlined),
-                  ),
-                ],
-                selected: {controller.mode},
-                onSelectionChanged: (selection) =>
-                    controller.setMode(selection.first),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
+    switch (_view) {
+      case View.library:
+        return LibraryView(onOpen: () => _go(View.book));
+      case View.book:
+        return BookView(onBack: () => _go(View.library));
+    }
   }
 }

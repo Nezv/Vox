@@ -2,38 +2,35 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:vox/app.dart';
-import 'package:vox/core/theme/app_theme.dart';
 
 void main() {
-  testWidgets('AppBar shows Vox title', (tester) async {
+  testWidgets('App boots on Library view with Vox title', (tester) async {
     await tester.pumpWidget(const VoxApp());
 
-    final appBarFinder = find.descendant(
-      of: find.byType(AppBar),
-      matching: find.text('Vox'),
+    expect(
+      find.descendant(
+        of: find.byType(AppBar),
+        matching: find.text('Vox'),
+      ),
+      findsOneWidget,
     );
-    expect(appBarFinder, findsOneWidget);
+    expect(find.text('Library'), findsOneWidget);
+    expect(find.text('Open sample'), findsOneWidget);
   });
 
-  testWidgets('Theme can be cycled through light, dark, sepia', (tester) async {
+  testWidgets('Library → Book → Library round-trip', (tester) async {
     await tester.pumpWidget(const VoxApp());
 
-    for (final mode in AppThemeMode.values) {
-      await tester.tap(find.text(_labelFor(mode)));
-      await tester.pumpAndSettle();
-    }
+    await tester.tap(find.text('Open sample'));
+    await tester.pumpAndSettle();
 
-    expect(find.byType(SegmentedButton<AppThemeMode>), findsOneWidget);
+    expect(find.text('Book'), findsOneWidget);
+    expect(find.text('Library'), findsNothing);
+
+    await tester.tap(find.byTooltip('Back to library'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Library'), findsOneWidget);
+    expect(find.text('Book'), findsNothing);
   });
-}
-
-String _labelFor(AppThemeMode mode) {
-  switch (mode) {
-    case AppThemeMode.light:
-      return 'Light';
-    case AppThemeMode.dark:
-      return 'Dark';
-    case AppThemeMode.sepia:
-      return 'Sepia';
-  }
 }
