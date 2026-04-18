@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 
 import '../core/constants.dart';
+import '../models/book.dart';
 
 class BookView extends StatelessWidget {
-  const BookView({super.key, required this.onBack});
+  const BookView({super.key, required this.book, required this.onBack});
 
+  final Book book;
   final VoidCallback onBack;
 
   @override
@@ -22,7 +24,7 @@ class BookView extends StatelessWidget {
       body: Center(
         child: Padding(
           padding: const EdgeInsets.all(32),
-          child: Text('Book', style: textTheme.headlineMedium),
+          child: Text(book.title, style: textTheme.headlineMedium),
         ),
       ),
     );

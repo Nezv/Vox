@@ -3,11 +3,15 @@ import 'package:flutter/material.dart';
 import 'core/constants.dart';
 import 'core/theme/app_theme.dart';
 import 'core/theme/theme_controller.dart';
+import 'data/library_repository.dart';
+import 'models/book.dart';
 import 'views/book_view.dart';
 import 'views/library_view.dart';
 
 class VoxApp extends StatefulWidget {
-  const VoxApp({super.key});
+  const VoxApp({super.key, this.repository});
+
+  final LibraryRepository? repository;
 
   @override
   State<VoxApp> createState() => _VoxAppState();
@@ -15,6 +19,8 @@ class VoxApp extends StatefulWidget {
 
 class _VoxAppState extends State<VoxApp> {
   final ThemeController _theme = ThemeController();
+  late final LibraryRepository _repository =
+      widget.repository ?? FileSystemLibraryRepository();
 
   @override
   void dispose() {
@@ -31,7 +37,7 @@ class _VoxAppState extends State<VoxApp> {
           title: kAppTitle,
           debugShowCheckedModeBanner: false,
           theme: AppTheme.themeFor(_theme.mode),
-          home: const AppShell(),
+          home: AppShell(repository: _repository),
         );
       },
     );
@@ -41,7 +47,9 @@ class _VoxAppState extends State<VoxApp> {
 enum View { library, book }
 
 class AppShell extends StatefulWidget {
-  const AppShell({super.key});
+  const AppShell({super.key, required this.repository});
+
+  final LibraryRepository repository;
 
   @override
   State<AppShell> createState() => _AppShellState();
@@ -49,16 +57,24 @@ class AppShell extends StatefulWidget {
 
 class _AppShellState extends State<AppShell> {
   View _view = View.library;
+  Book? _selected;
 
-  void _go(View next) => setState(() => _view = next);
+  void _open(Book book) =>
+      setState(() {
+        _selected = book;
+        _view = View.book;
+      });
+
+  void _back() => setState(() => _view = View.library);
 
   @override
   Widget build(BuildContext context) {
     switch (_view) {
       case View.library:
-        return LibraryView(onOpen: () => _go(View.book));
+        return LibraryView(repository: widget.repository, onOpen: _open);
       case View.book:
-        return BookView(onBack: () => _go(View.library));
+        assert(_selected != null, 'BookView requires a selected book');
+        return BookView(book: _selected!, onBack: _back);
     }
   }
 }
