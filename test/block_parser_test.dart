@@ -17,9 +17,18 @@ void main() {
       ]);
     });
 
-    test('joins consecutive non-blank lines into one paragraph', () {
+    test('joins consecutive non-blank lines preserving line breaks', () {
       final blocks = parseMarkdownBlocks('alpha\nbeta\ngamma');
-      expect(blocks, [const Block(BlockKind.paragraph, 'alpha beta gamma')]);
+      expect(blocks, [const Block(BlockKind.paragraph, 'alpha\nbeta\ngamma')]);
+    });
+
+    test('mixed line breaks and blank line splits into two paragraphs', () {
+      final blocks = parseMarkdownBlocks('line1\nline2\n\nline3');
+      expect(blocks, [
+        const Block(BlockKind.paragraph, 'line1\nline2'),
+        const Block(BlockKind.blank, ''),
+        const Block(BlockKind.paragraph, 'line3'),
+      ]);
     });
 
     test('splits paragraphs on blank lines and collapses runs of blanks', () {

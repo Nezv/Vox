@@ -26,7 +26,7 @@ List<Block> parseMarkdownBlocks(String source) {
 
   void flushParagraph() {
     if (paragraph.isEmpty) return;
-    blocks.add(Block(BlockKind.paragraph, paragraph.join(' ')));
+    blocks.add(Block(BlockKind.paragraph, paragraph.join('\n')));
     paragraph.clear();
   }
 

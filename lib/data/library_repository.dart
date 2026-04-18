@@ -8,6 +8,8 @@ import 'library_folder.dart';
 abstract class LibraryRepository {
   Future<List<Book>> loadBooks();
   Future<bool> chooseFolder();
+  Future<void> delete(Book book);
+  Future<Book> rename(Book book, String newBaseName);
   String? get folderPath;
 }
 
@@ -42,6 +44,31 @@ class FileSystemLibraryRepository implements LibraryRepository {
       (a, b) => a.title.toLowerCase().compareTo(b.title.toLowerCase()),
     );
     return books;
+  }
+
+  @override
+  Future<void> delete(Book book) => File(book.path).delete();
+
+  @override
+  Future<Book> rename(Book book, String newBaseName) async {
+    final trimmed = newBaseName.trim();
+    if (trimmed.isEmpty) {
+      throw ArgumentError('New name must not be empty');
+    }
+    if (trimmed.contains('/') ||
+        trimmed.contains('\\') ||
+        trimmed.contains(':')) {
+      throw ArgumentError('New name must not contain path separators');
+    }
+    final dir = p.dirname(book.path);
+    final newPath = p.join(dir, '$trimmed.md');
+    if (newPath == book.path) return book;
+    if (await File(newPath).exists()) {
+      throw StateError('A book named "$trimmed.md" already exists');
+    }
+    final renamed = await File(book.path).rename(newPath);
+    final title = await _readTitle(renamed);
+    return Book(path: renamed.path, title: title);
   }
 
   Future<String> _readTitle(File file) async {
