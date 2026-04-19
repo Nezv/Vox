@@ -38,5 +38,9 @@ abstract class TtsEngine {
   Future<void> resume();
   Future<void> stop();
   Future<void> setRate(double rate);
+  Future<List<String>> getLanguages();
+  Future<List<Map<String, String>>> getVoices();
+  Future<void> setLanguage(String language);
+  Future<void> setVoice(Map<String, String> voice);
   Future<void> dispose();
 }

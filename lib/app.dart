@@ -111,7 +111,15 @@ class _AppShellState extends State<AppShell> {
   View _view = View.library;
   Book? _selected;
   int _initialPage = 0;
+  int _initialBlockIndex = 0;
+  int _initialCharOffset = 0;
   bool _booting = true;
+
+  int _currentPage = 0;
+  int _currentBlockIndex = 0;
+  int _currentCharOffset = 0;
+  double _currentFraction = 0.0;
+  Map<String, double> _bookProgress = const {};
 
   @override
   void initState() {
@@ -120,8 +128,14 @@ class _AppShellState extends State<AppShell> {
   }
 
   Future<void> _boot() async {
-    final saved = await widget.stateRepository.load();
+    final results = await Future.wait([
+      widget.stateRepository.load(),
+      widget.stateRepository.loadAllProgress(),
+    ]);
+    final saved = results[0] as ReadingState?;
+    final progress = results[1] as Map<String, double>;
     if (!mounted) return;
+    _bookProgress = progress;
     if (saved == null) {
       setState(() => _booting = false);
       return;
@@ -137,6 +151,12 @@ class _AppShellState extends State<AppShell> {
       setState(() {
         _selected = match.first;
         _initialPage = saved.pageIndex;
+        _initialBlockIndex = saved.blockIndex;
+        _initialCharOffset = saved.charOffset;
+        _currentPage = saved.pageIndex;
+        _currentBlockIndex = saved.blockIndex;
+        _currentCharOffset = saved.charOffset;
+        _currentFraction = saved.progressFraction;
         _view = View.book;
         _booting = false;
       });
@@ -149,6 +169,12 @@ class _AppShellState extends State<AppShell> {
     setState(() {
       _selected = book;
       _initialPage = 0;
+      _initialBlockIndex = 0;
+      _initialCharOffset = 0;
+      _currentPage = 0;
+      _currentBlockIndex = 0;
+      _currentCharOffset = 0;
+      _currentFraction = 0.0;
       _view = View.book;
     });
     widget.stateRepository.save(
@@ -163,9 +189,30 @@ class _AppShellState extends State<AppShell> {
   void _onPageChanged(int page) {
     final book = _selected;
     if (book == null) return;
-    widget.stateRepository.save(
-      ReadingState(bookPath: book.path, pageIndex: page),
-    );
+    _currentPage = page;
+    widget.stateRepository.save(ReadingState(
+      bookPath: book.path,
+      pageIndex: page,
+      blockIndex: _currentBlockIndex,
+      charOffset: _currentCharOffset,
+      progressFraction: _currentFraction,
+    ));
+  }
+
+  void _onCursorChanged(int blockIndex, int charOffset, double fraction) {
+    final book = _selected;
+    if (book == null) return;
+    _currentBlockIndex = blockIndex;
+    _currentCharOffset = charOffset;
+    _currentFraction = fraction;
+    _bookProgress = Map.of(_bookProgress)..[book.path] = fraction;
+    widget.stateRepository.save(ReadingState(
+      bookPath: book.path,
+      pageIndex: _currentPage,
+      blockIndex: blockIndex,
+      charOffset: charOffset,
+      progressFraction: fraction,
+    ));
   }
 
   @override
@@ -175,7 +222,11 @@ class _AppShellState extends State<AppShell> {
     }
     switch (_view) {
       case View.library:
-        return LibraryView(repository: widget.repository, onOpen: _open);
+        return LibraryView(
+          repository: widget.repository,
+          onOpen: _open,
+          bookProgress: _bookProgress,
+        );
       case View.book:
         assert(_selected != null, 'BookView requires a selected book');
         return BookView(
@@ -186,7 +237,10 @@ class _AppShellState extends State<AppShell> {
           theme: widget.theme,
           ttsEngine: widget.ttsEngine,
           initialPage: _initialPage,
+          initialBlockIndex: _initialBlockIndex,
+          initialCharOffset: _initialCharOffset,
           onPageChanged: _onPageChanged,
+          onCursorChanged: _onCursorChanged,
         );
     }
   }

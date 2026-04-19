@@ -43,6 +43,18 @@ class _FakeEngine implements TtsEngine {
   Future<void> setRate(double rate) async {}
 
   @override
+  Future<List<String>> getLanguages() async => const [];
+
+  @override
+  Future<List<Map<String, String>>> getVoices() async => const [];
+
+  @override
+  Future<void> setLanguage(String language) async {}
+
+  @override
+  Future<void> setVoice(Map<String, String> voice) async {}
+
+  @override
   Future<void> dispose() async {
     await _controller.close();
   }
@@ -150,6 +162,27 @@ void main() {
     await tester.tap(find.byIcon(Icons.replay_10));
     await tester.pump();
     expect(c.wordsSpoken, lessThan(before));
+    await engine.dispose();
+    c.dispose();
+  });
+
+  testWidgets('track-mode button calls callback when not tracking',
+      (tester) async {
+    final engine = _FakeEngine();
+    final c = PlaybackController(engine: engine, blocks: [
+      const Block(BlockKind.paragraph, 'one two three'),
+    ]);
+    var called = 0;
+    await tester.pumpWidget(_harness(PlaybackBar(
+      controller: c,
+      onPreviousPage: () {},
+      onNextPage: () {},
+      isTrackingPageView: false,
+      onEnableTrackMode: () => called++,
+    )));
+    await tester.tap(find.byTooltip('Return to track mode'));
+    await tester.pump();
+    expect(called, 1);
     await engine.dispose();
     c.dispose();
   });

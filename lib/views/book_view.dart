@@ -34,7 +34,10 @@ class BookView extends StatefulWidget {
     required this.theme,
     required this.ttsEngine,
     this.initialPage = 0,
+    this.initialBlockIndex = 0,
+    this.initialCharOffset = 0,
     this.onPageChanged,
+    this.onCursorChanged,
   });
 
   final Book book;
@@ -44,7 +47,11 @@ class BookView extends StatefulWidget {
   final ThemeController theme;
   final TtsEngine ttsEngine;
   final int initialPage;
+  final int initialBlockIndex;
+  final int initialCharOffset;
   final ValueChanged<int>? onPageChanged;
+  final void Function(int blockIndex, int charOffset, double progressFraction)?
+      onCursorChanged;
 
   @override
   State<BookView> createState() => _BookViewState();
@@ -66,8 +73,8 @@ class _BookViewState extends State<BookView> {
   Timer? _fadeTimer;
 
   late final PlaybackController _playback;
-  bool _autoFollow = true;
-  Timer? _autoFollowRearmTimer;
+  _ReadingViewMode _readingViewMode = _ReadingViewMode.track;
+  bool _isProgrammaticPageChange = false;
 
   @override
   void initState() {
@@ -104,7 +111,6 @@ class _BookViewState extends State<BookView> {
   @override
   void dispose() {
     _fadeTimer?.cancel();
-    _autoFollowRearmTimer?.cancel();
     widget.settings.removeListener(_onSettingsChanged);
     widget.theme.removeListener(_onSettingsChanged);
     _playback.removeListener(_onPlaybackChanged);
@@ -137,6 +143,10 @@ class _BookViewState extends State<BookView> {
         _pageCacheKey = null;
       });
       _playback.updateBlocks(blocks);
+      if (widget.initialBlockIndex > 0 || widget.initialCharOffset > 0) {
+        _playback.restoreCursor(
+            widget.initialBlockIndex, widget.initialCharOffset);
+      }
       _armFadeTimer();
     } catch (e) {
       if (!mounted) return;
@@ -198,8 +208,10 @@ class _BookViewState extends State<BookView> {
     } else if (spreadCount > 0 && _currentSpread >= spreadCount) {
       _currentSpread = spreadCount - 1;
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted && _controller!.hasClients) {
-          _controller!.jumpToPage(_currentSpread);
+        if (mounted && (_controller?.hasClients ?? false)) {
+          _isProgrammaticPageChange = true;
+          _controller?.jumpToPage(_currentSpread);
+          _isProgrammaticPageChange = false;
         }
       });
     }
@@ -208,11 +220,20 @@ class _BookViewState extends State<BookView> {
   void _onSpreadChanged(int spread) {
     _currentSpread = spread;
     widget.onPageChanged?.call(spread);
+    if (!_isProgrammaticPageChange &&
+        _readingViewMode == _ReadingViewMode.track) {
+      setState(() => _readingViewMode = _ReadingViewMode.fixed);
+    }
     _armFadeTimer();
   }
 
   void _onPlaybackChanged() {
-    if (!_autoFollow) return;
+    widget.onCursorChanged?.call(
+      _playback.cursorBlockIndex,
+      _playback.cursorCharOffset,
+      _playback.progress,
+    );
+    if (_readingViewMode != _ReadingViewMode.track) return;
     final pages = _playback.pages;
     if (pages.isEmpty) return;
     final idx = _playback.cursorBlockIndex;
@@ -223,7 +244,7 @@ class _BookViewState extends State<BookView> {
     );
     if (spread != _currentSpread &&
         (_controller?.hasClients ?? false)) {
-      _controller!.animateToPage(
+      _animateToSpread(
         spread,
         duration: const Duration(milliseconds: 300),
         curve: Curves.easeOut,
@@ -231,19 +252,45 @@ class _BookViewState extends State<BookView> {
     }
   }
 
-  void _suspendAutoFollow() {
-    _autoFollow = false;
-    _autoFollowRearmTimer?.cancel();
-    _autoFollowRearmTimer = Timer(const Duration(milliseconds: 600), () {
-      if (mounted) _autoFollow = true;
-    });
+  Future<void> _animateToSpread(
+    int target, {
+    required Duration duration,
+    required Curve curve,
+  }) async {
+    if (!(_controller?.hasClients ?? false)) return;
+    if (target == _currentSpread) return;
+    _isProgrammaticPageChange = true;
+    try {
+      await _controller!.animateToPage(
+        target,
+        duration: duration,
+        curve: curve,
+      );
+    } finally {
+      _isProgrammaticPageChange = false;
+    }
+  }
+
+  void _enableTrackMode() {
+    if (_readingViewMode == _ReadingViewMode.track) return;
+    setState(() => _readingViewMode = _ReadingViewMode.track);
+    _onPlaybackChanged();
+  }
+
+  int _spreadCount() => (_cachedPages.length / _pagesPerSpread)
+      .ceil()
+      .clamp(1, 1 << 30);
+
+  void _exitTrackModeForUserNavigation() {
+    if (_readingViewMode == _ReadingViewMode.fixed) return;
+    setState(() => _readingViewMode = _ReadingViewMode.fixed);
   }
 
   void _previousPage() {
-    _suspendAutoFollow();
+    _exitTrackModeForUserNavigation();
     if (!(_controller?.hasClients ?? false)) return;
-    final target = (_currentSpread - 1).clamp(0, 1 << 30);
-    _controller!.animateToPage(
+    final target = (_currentSpread - 1).clamp(0, _spreadCount() - 1);
+    _animateToSpread(
       target,
       duration: const Duration(milliseconds: 200),
       curve: Curves.easeOut,
@@ -251,10 +298,11 @@ class _BookViewState extends State<BookView> {
   }
 
   void _nextPage() {
-    _suspendAutoFollow();
+    _exitTrackModeForUserNavigation();
     if (!(_controller?.hasClients ?? false)) return;
-    _controller!.animateToPage(
-      _currentSpread + 1,
+    final target = (_currentSpread + 1).clamp(0, _spreadCount() - 1);
+    _animateToSpread(
+      target,
       duration: const Duration(milliseconds: 200),
       curve: Curves.easeOut,
     );
@@ -275,18 +323,96 @@ class _BookViewState extends State<BookView> {
   }
 
   void _jumpToBlock(int blockIndex) {
+    _exitTrackModeForUserNavigation();
     final spread = findSpreadForBlock(
       pages: _cachedPages,
       blockIndex: blockIndex,
       pagesPerSpread: _pagesPerSpread,
     );
     if (_controller?.hasClients ?? false) {
-      _controller!.animateToPage(
+      _animateToSpread(
         spread,
         duration: const Duration(milliseconds: 300),
         curve: Curves.easeOut,
       );
     }
+  }
+
+  double _rightPanelWidthFor(double screenWidth) {
+    if (screenWidth >= 1700) return 520;
+    if (screenWidth >= 1400) return 470;
+    if (screenWidth >= 1100) return 430;
+    if (screenWidth >= 900) return 390;
+    return (screenWidth * 0.96).clamp(320.0, 420.0);
+  }
+
+  Future<void> _openContents() async {
+    _fadeTimer?.cancel();
+    await showGeneralDialog<void>(
+      context: context,
+      barrierDismissible: true,
+      barrierLabel: 'Dismiss contents',
+      barrierColor: Colors.black54,
+      transitionDuration: const Duration(milliseconds: 240),
+      pageBuilder: (dialogContext, _, __) {
+        final size = MediaQuery.sizeOf(dialogContext);
+        final panelWidth = _rightPanelWidthFor(size.width);
+        return SafeArea(
+          child: Stack(
+            children: [
+              Positioned(
+                right: 18,
+                top: 14,
+                bottom: 14,
+                child: SizedBox(
+                  width: panelWidth,
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: Theme.of(dialogContext).colorScheme.surface,
+                      borderRadius: BorderRadius.circular(22),
+                      boxShadow: const [
+                        BoxShadow(
+                          color: Color(0x4A000000),
+                          blurRadius: 26,
+                          spreadRadius: 1,
+                          offset: Offset(0, 12),
+                        ),
+                      ],
+                    ),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(22),
+                      child: Material(
+                        type: MaterialType.transparency,
+                        child: _buildTocPanel(dialogContext),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+      transitionBuilder: (context, animation, secondaryAnimation, child) {
+        final curved =
+            CurvedAnimation(parent: animation, curve: Curves.easeOutCubic);
+        return SlideTransition(
+          position: Tween<Offset>(
+            begin: const Offset(0.12, 0),
+            end: Offset.zero,
+          ).animate(curved),
+          child: FadeTransition(
+            opacity: curved,
+            child: ScaleTransition(
+              alignment: Alignment.centerRight,
+              scale: Tween<double>(begin: 0.985, end: 1).animate(curved),
+              child: child,
+            ),
+          ),
+        );
+      },
+    );
+    if (mounted) _armFadeTimer();
   }
 
   Future<void> _openSettings() async {
@@ -295,8 +421,27 @@ class _BookViewState extends State<BookView> {
       context,
       settings: widget.settings,
       theme: widget.theme,
+      engine: widget.ttsEngine,
+      controller: _playback,
     );
     if (mounted) _armFadeTimer();
+  }
+
+  DateTime? _lastHoverTime;
+
+  void _handleHover() {
+    final now = DateTime.now();
+    if (_lastHoverTime != null &&
+        now.difference(_lastHoverTime!) < const Duration(milliseconds: 100)) {
+      return;
+    }
+    _lastHoverTime = now;
+    if (!_chromeVisible) {
+      // Re-awaken chrome
+      setState(() => _chromeVisible = true);
+    }
+    // Always rearm to prolong visibility while hovering
+    _armFadeTimer();
   }
 
   @override
@@ -312,12 +457,10 @@ class _BookViewState extends State<BookView> {
           ? null
           : [
               if (_toc.isNotEmpty)
-                Builder(
-                  builder: (ctx) => IconButton(
-                    icon: const Icon(Icons.menu_book),
-                    tooltip: 'Contents',
-                    onPressed: () => Scaffold.of(ctx).openEndDrawer(),
-                  ),
+                IconButton(
+                  icon: const Icon(Icons.menu_book),
+                  tooltip: 'Contents',
+                  onPressed: _openContents,
                 ),
               IconButton(
                 icon: const Icon(Icons.tune),
@@ -330,31 +473,36 @@ class _BookViewState extends State<BookView> {
     final showChrome = _chromeVisible || _loading || _error != null;
     final showPlaybackBar = !_loading && _error == null && _blocks.isNotEmpty;
 
-    return Scaffold(
-      appBar: PreferredSize(
-        preferredSize: Size.fromHeight(barHeight),
-        child: AnimatedOpacity(
-          opacity: showChrome ? 1.0 : 0.0,
-          duration: _fadeDuration,
-          child: IgnorePointer(ignoring: !showChrome, child: bar),
+    return MouseRegion(
+      onHover: (_) => _handleHover(),
+      child: Scaffold(
+        appBar: PreferredSize(
+          preferredSize: Size.fromHeight(barHeight),
+          child: AnimatedOpacity(
+            opacity: showChrome ? 1.0 : 0.0,
+            duration: _fadeDuration,
+            child: IgnorePointer(ignoring: !showChrome, child: bar),
+          ),
         ),
-      ),
-      endDrawer: _toc.isEmpty ? null : _buildTocDrawer(context),
-      body: SafeArea(top: false, child: _buildBody(context)),
-      bottomNavigationBar: !showPlaybackBar
-          ? null
-          : AnimatedOpacity(
-              opacity: showChrome ? 1.0 : 0.0,
-              duration: _fadeDuration,
-              child: IgnorePointer(
-                ignoring: !showChrome,
-                child: PlaybackBar(
-                  controller: _playback,
-                  onPreviousPage: _previousPage,
-                  onNextPage: _nextPage,
+        body: SafeArea(top: false, child: _buildBody(context)),
+        bottomNavigationBar: !showPlaybackBar
+            ? null
+            : AnimatedOpacity(
+                opacity: showChrome ? 1.0 : 0.0,
+                duration: _fadeDuration,
+                child: IgnorePointer(
+                  ignoring: !showChrome,
+                  child: PlaybackBar(
+                    controller: _playback,
+                    onPreviousPage: _previousPage,
+                    onNextPage: _nextPage,
+                    isTrackingPageView:
+                        _readingViewMode == _ReadingViewMode.track,
+                    onEnableTrackMode: _enableTrackMode,
+                  ),
                 ),
               ),
-            ),
+      ),
     );
   }
 
@@ -440,6 +588,7 @@ class _BookViewState extends State<BookView> {
                 padding: _pagePadding,
                 highlightBlockIndex: highlightBlock,
                 highlightRange: highlightRange,
+                onTap: _toggleChrome,
               )
             : const SizedBox.shrink(),
       );
@@ -454,45 +603,53 @@ class _BookViewState extends State<BookView> {
     );
   }
 
-  Widget _buildTocDrawer(BuildContext context) {
+  Widget _buildTocPanel(BuildContext context) {
     final textTheme = Theme.of(context).textTheme;
-    return Drawer(
-      child: SafeArea(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(24, 24, 24, 12),
-              child: Text('Contents', style: textTheme.titleLarge),
-            ),
-            const Divider(height: 1),
-            Expanded(
-              child: ListView.builder(
-                itemCount: _toc.length,
-                itemBuilder: (context, i) {
-                  final entry = _toc[i];
-                  return ListTile(
-                    contentPadding: EdgeInsets.only(
-                      left: 24.0 + entry.depth * 16,
-                      right: 16,
-                    ),
-                    title: Text(
-                      entry.title,
-                      style: entry.level == BlockKind.h1
-                          ? textTheme.titleMedium
-                          : textTheme.bodyLarge,
-                    ),
-                    onTap: () {
-                      Navigator.of(context).pop();
-                      _jumpToBlock(entry.blockIndex);
-                    },
-                  );
-                },
+    final borderColor = Theme.of(context).colorScheme.outlineVariant;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(24, 12, 12, 8),
+          child: Row(
+            children: [
+              Expanded(child: Text('Contents', style: textTheme.titleLarge)),
+              IconButton(
+                tooltip: 'Close contents',
+                icon: const Icon(Icons.close),
+                onPressed: () => Navigator.of(context).maybePop(),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
-      ),
+        Divider(height: 1, color: borderColor),
+        Expanded(
+          child: ListView.builder(
+            itemCount: _toc.length,
+            itemBuilder: (context, i) {
+              final entry = _toc[i];
+              return ListTile(
+                contentPadding: EdgeInsets.only(
+                  left: 24.0 + entry.depth * 16,
+                  right: 16,
+                ),
+                title: Text(
+                  entry.title,
+                  style: entry.level == BlockKind.h1
+                      ? textTheme.titleMedium
+                      : textTheme.bodyLarge,
+                ),
+                onTap: () {
+                  Navigator.of(context).pop();
+                  _jumpToBlock(entry.blockIndex);
+                },
+              );
+            },
+          ),
+        ),
+      ],
     );
   }
 }
+
+enum _ReadingViewMode { track, fixed }

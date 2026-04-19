@@ -2,7 +2,14 @@ import 'package:flutter/foundation.dart';
 
 enum ReaderFontScale { small, normal, large, xlarge }
 
-enum ReaderFontFamily { serif, sans, system }
+enum ReaderFontFamily {
+  timesNewRoman,
+  georgia,
+  garamond,
+  cambria,
+  sansSerif,
+  verdana,
+}
 
 extension ReaderFontScaleX on ReaderFontScale {
   double get multiplier {
@@ -35,23 +42,35 @@ extension ReaderFontScaleX on ReaderFontScale {
 extension ReaderFontFamilyX on ReaderFontFamily {
   String? get fontFamily {
     switch (this) {
-      case ReaderFontFamily.serif:
+      case ReaderFontFamily.timesNewRoman:
+        return 'Times New Roman';
+      case ReaderFontFamily.georgia:
         return 'Georgia';
-      case ReaderFontFamily.sans:
-        return 'Inter';
-      case ReaderFontFamily.system:
-        return null;
+      case ReaderFontFamily.garamond:
+        return 'Garamond';
+      case ReaderFontFamily.cambria:
+        return 'Cambria';
+      case ReaderFontFamily.sansSerif:
+        return 'Arial';
+      case ReaderFontFamily.verdana:
+        return 'Verdana';
     }
   }
 
   String get label {
     switch (this) {
-      case ReaderFontFamily.serif:
-        return 'Serif';
-      case ReaderFontFamily.sans:
-        return 'Sans';
-      case ReaderFontFamily.system:
-        return 'System';
+      case ReaderFontFamily.timesNewRoman:
+        return 'Times New Roman';
+      case ReaderFontFamily.georgia:
+        return 'Georgia';
+      case ReaderFontFamily.garamond:
+        return 'Garamond';
+      case ReaderFontFamily.cambria:
+        return 'Cambria';
+      case ReaderFontFamily.sansSerif:
+        return 'Sans Serif';
+      case ReaderFontFamily.verdana:
+        return 'Verdana';
     }
   }
 }
@@ -59,15 +78,19 @@ extension ReaderFontFamilyX on ReaderFontFamily {
 class ReaderSettings extends ChangeNotifier {
   ReaderSettings({
     ReaderFontScale scale = ReaderFontScale.normal,
-    ReaderFontFamily family = ReaderFontFamily.serif,
+    ReaderFontFamily family = ReaderFontFamily.timesNewRoman,
+    double speechRate = 0.5,
   })  : _scale = scale,
-        _family = family;
+        _family = family,
+        _speechRate = speechRate;
 
   ReaderFontScale _scale;
   ReaderFontFamily _family;
+  double _speechRate;
 
   ReaderFontScale get scale => _scale;
   ReaderFontFamily get family => _family;
+  double get speechRate => _speechRate;
 
   void setScale(ReaderFontScale value) {
     if (_scale == value) return;
@@ -78,6 +101,13 @@ class ReaderSettings extends ChangeNotifier {
   void setFamily(ReaderFontFamily value) {
     if (_family == value) return;
     _family = value;
+    notifyListeners();
+  }
+
+  void setSpeechRate(double value) {
+    final clamped = value.clamp(0.25, 1.0);
+    if (_speechRate == clamped) return;
+    _speechRate = clamped;
     notifyListeners();
   }
 }

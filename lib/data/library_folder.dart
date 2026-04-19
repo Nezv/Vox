@@ -25,11 +25,25 @@ class LibraryFolder {
   }
 
   Future<String> _defaultFolder() async {
-    final docs = await getApplicationDocumentsDirectory();
-    final folder = Directory(p.join(docs.path, 'Vox'));
+    final docs = await _documentsRoot();
+    final folder = Directory(p.join(docs, 'VoxLibrary'));
     if (!await folder.exists()) {
       await folder.create(recursive: true);
     }
     return folder.path;
+  }
+
+  Future<String> _documentsRoot() async {
+    if (Platform.isWindows) {
+      final userProfile = Platform.environment['USERPROFILE'];
+      if (userProfile != null && userProfile.isNotEmpty) {
+        final docs = Directory(p.join(userProfile, 'Documents'));
+        if (await docs.exists()) {
+          return docs.path;
+        }
+      }
+    }
+    final docs = await getApplicationDocumentsDirectory();
+    return docs.path;
   }
 }

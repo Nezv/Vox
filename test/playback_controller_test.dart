@@ -41,6 +41,18 @@ class _FakeEngine implements TtsEngine {
   Future<void> setRate(double rate) async {}
 
   @override
+  Future<List<String>> getLanguages() async => const [];
+
+  @override
+  Future<List<Map<String, String>>> getVoices() async => const [];
+
+  @override
+  Future<void> setLanguage(String language) async {}
+
+  @override
+  Future<void> setVoice(Map<String, String> voice) async {}
+
+  @override
   Future<void> dispose() async {
     await _controller.close();
   }
@@ -135,6 +147,62 @@ void main() {
     await Future<void>.delayed(Duration.zero);
     expect(c.cursorCharOffset, 5);
     expect(c.currentWordRange, (0, 5));
+    await engine.dispose();
+    c.dispose();
+  });
+
+  test('restoreCursor seeds block and char offset', () async {
+    final engine = _FakeEngine();
+    final blocks = [
+      const Block(BlockKind.paragraph, 'one two three'),
+      const Block(BlockKind.paragraph, 'four five six'),
+    ];
+    final c = PlaybackController(engine: engine, blocks: blocks);
+    c.restoreCursor(1, 5);
+    expect(c.cursorBlockIndex, 1);
+    expect(c.cursorCharOffset, 5);
+    await engine.dispose();
+    c.dispose();
+  });
+
+  test('reseedWps resets elapsed time estimate', () async {
+    final engine = _FakeEngine();
+    final blocks = [
+      Block(BlockKind.paragraph, List.generate(50, (i) => 'w$i').join(' ')),
+    ];
+    final c = PlaybackController(
+      engine: engine,
+      blocks: blocks,
+      initialWordsPerSecond: 2.5,
+    );
+    await c.seek(const Duration(seconds: 10));
+    final before = c.wordsSpoken;
+    c.reseedWps(5.0);
+    expect(c.wordsPerSecond, 5.0);
+    // wordsSpoken unchanged — only the rate changed
+    expect(c.wordsSpoken, before);
+    await engine.dispose();
+    c.dispose();
+  });
+
+  test('long block is chunked and advances without boundary events', () async {
+    final engine = _FakeEngine();
+    final block = Block(
+      BlockKind.paragraph,
+      List.generate(140, (i) => 'word$i').join(' '),
+    );
+    final c = PlaybackController(engine: engine, blocks: [block]);
+
+    await c.play();
+    expect(engine.speakCalls, isNotEmpty);
+    expect(engine.speakCalls.first.length, lessThanOrEqualTo(280));
+
+    for (var i = 0; i < 20 && c.cursorBlockIndex < 1; i++) {
+      engine.emit(const TtsCompleted());
+      await Future<void>.delayed(Duration.zero);
+    }
+
+    expect(c.cursorBlockIndex, 1);
     await engine.dispose();
     c.dispose();
   });

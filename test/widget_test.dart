@@ -22,6 +22,9 @@ class _FakeRepo implements LibraryRepository {
   Future<List<Book>> loadBooks() async => List.of(books);
 
   @override
+  Future<int> importBooks() async => 0;
+
+  @override
   Future<bool> chooseFolder() async => false;
 
   @override
@@ -59,9 +62,10 @@ class _FakeContentRepo implements BookContentRepository {
 }
 
 class _FakeStateRepo implements ReadingStateRepository {
-  _FakeStateRepo([this.stored]);
+  _FakeStateRepo([this.stored, this._progress = const {}]);
 
   ReadingState? stored;
+  final Map<String, double> _progress;
   int saves = 0;
 
   @override
@@ -77,6 +81,9 @@ class _FakeStateRepo implements ReadingStateRepository {
   Future<void> clear() async {
     stored = null;
   }
+
+  @override
+  Future<Map<String, double>> loadAllProgress() async => Map.of(_progress);
 }
 
 VoxApp _buildApp({
@@ -116,9 +123,9 @@ void main() {
     await tester.pumpWidget(_buildApp(repo: _FakeRepo([])));
     await tester.pumpAndSettle();
 
-    expect(find.text('No books in'), findsOneWidget);
+    expect(find.text('No books yet'), findsOneWidget);
     expect(find.text('/fake/Vox'), findsOneWidget);
-    expect(find.textContaining('Add .md files'), findsOneWidget);
+    expect(find.textContaining('Import .md files'), findsOneWidget);
   });
 
   testWidgets('Library → Book → Library renders content and round-trips',
@@ -292,6 +299,23 @@ void main() {
     expect(repo.deleteCalls, 1);
     expect(find.text('Alpha'), findsNothing);
     expect(find.text('Beta'), findsOneWidget);
+  });
+
+  testWidgets('Library shows progress bar for a book with saved progress',
+      (tester) async {
+    final repo = _FakeRepo([
+      const Book(path: '/fake/Vox/alpha.md', title: 'Alpha'),
+      const Book(path: '/fake/Vox/beta.md', title: 'Beta'),
+    ]);
+    final state = _FakeStateRepo(
+      null,
+      {'/fake/Vox/alpha.md': 0.45},
+    );
+
+    await tester.pumpWidget(_buildApp(repo: repo, state: state));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(LinearProgressIndicator), findsOneWidget);
   });
 
   testWidgets('Wide window shows a two-page spread', (tester) async {

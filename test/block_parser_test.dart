@@ -17,18 +17,33 @@ void main() {
       ]);
     });
 
-    test('joins consecutive non-blank lines preserving line breaks', () {
+    test('joins consecutive non-blank lines for adaptive reflow', () {
       final blocks = parseMarkdownBlocks('alpha\nbeta\ngamma');
-      expect(blocks, [const Block(BlockKind.paragraph, 'alpha\nbeta\ngamma')]);
+      expect(blocks, [const Block(BlockKind.paragraph, 'alpha beta gamma')]);
     });
 
-    test('mixed line breaks and blank line splits into two paragraphs', () {
+    test('line breaks inside paragraph are reflowed into spaces', () {
       final blocks = parseMarkdownBlocks('line1\nline2\n\nline3');
       expect(blocks, [
-        const Block(BlockKind.paragraph, 'line1\nline2'),
+        const Block(BlockKind.paragraph, 'line1 line2'),
         const Block(BlockKind.blank, ''),
         const Block(BlockKind.paragraph, 'line3'),
       ]);
+    });
+
+    test('two trailing spaces create an explicit hard line break', () {
+      final blocks = parseMarkdownBlocks('line1  \nline2');
+      expect(blocks, [const Block(BlockKind.paragraph, 'line1\nline2')]);
+    });
+
+    test('trailing backslash creates an explicit hard line break', () {
+      final blocks = parseMarkdownBlocks('line1\\\nline2');
+      expect(blocks, [const Block(BlockKind.paragraph, 'line1\nline2')]);
+    });
+
+    test('hard break applies only to marked line in mixed paragraph', () {
+      final blocks = parseMarkdownBlocks('one  \ntwo\nthree');
+      expect(blocks, [const Block(BlockKind.paragraph, 'one\ntwo three')]);
     });
 
     test('splits paragraphs on blank lines and collapses runs of blanks', () {
@@ -46,6 +61,34 @@ void main() {
         const Block(BlockKind.paragraph, 'intro line'),
         const Block(BlockKind.h2, 'Heading'),
         const Block(BlockKind.paragraph, 'body line'),
+      ]);
+    });
+
+    test('parses inline bold and italic styles in paragraph text', () {
+      final blocks = parseMarkdownBlocks('alpha **bold** and *italic* text');
+      expect(blocks, [
+        const Block(
+          BlockKind.paragraph,
+          'alpha bold and italic text',
+          inlineStyles: [
+            InlineStyleRange(6, 10, bold: true),
+            InlineStyleRange(15, 21, italic: true),
+          ],
+        ),
+      ]);
+    });
+
+    test('parses inline bold and italic styles in heading text', () {
+      final blocks = parseMarkdownBlocks('# Title with **bold** and *italic*');
+      expect(blocks, [
+        const Block(
+          BlockKind.h1,
+          'Title with bold and italic',
+          inlineStyles: [
+            InlineStyleRange(11, 15, bold: true),
+            InlineStyleRange(20, 26, italic: true),
+          ],
+        ),
       ]);
     });
 

@@ -1,5 +1,132 @@
 # Vox dev environment — status tracker
 
+## 2026-04-19 — Hotfix: dual reading view modes
+
+### Done
+- **Implemented two persistent page-view modes.** `lib/views/book_view.dart` now supports `track` mode (page follows TTS cursor) and `fixed` mode (page stays where user moved it while TTS continues processing).
+- **Track mode exits only on user page navigation.** Manual page flips/scrubs switch to fixed mode; automatic playback-driven page flips remain in track mode.
+- **Added explicit return-to-track control in bottom bar.** `lib/views/reader/playback_bar.dart` now includes the requested lines+triangle control that re-enables track mode when currently fixed.
+- **Contents and settings remain independent overlays.** Mode switching is page-view behavior only and does not stop or pause the TTS controller.
+- **Test coverage expanded.** `test/playback_bar_test.dart` now verifies the track-mode button callback path.
+- **Validation complete.** `flutter analyze` reports no issues; `flutter test` passes `54/54`.
+
+### Not yet done
+- Optional enhancement: persist selected view mode per book/session so app restarts restore the user’s last track/fixed preference.
+
+## 2026-04-19 — Hotfix: markdown hard-break support
+
+### Done
+- **Added explicit hard line-break handling while keeping adaptive prose reflow.** `lib/core/markdown/block_parser.dart` now preserves a line break inside paragraphs only when markdown hard-break markers are present.
+- **Supported hard-break markers.** Two trailing spaces before newline (`"line  \n"`) and trailing backslash (`"line\\\n"`) now emit an internal `\n` in paragraph text.
+- **Default behavior preserved for normal prose.** Unmarked line wraps still join with spaces and reflow with font/layout changes.
+- **Test coverage expanded.** `test/block_parser_test.dart` now includes cases for both hard-break syntaxes and mixed marked/unmarked paragraph behavior.
+- **Validation complete.** `flutter analyze` reports no issues; `flutter test` passes `53/53`.
+
+### Not yet done
+- Optional future enhancement: dedicated per-book rendering mode toggle (prose vs verse) for stricter formatting control.
+
+## 2026-04-19 — Hotfix: adaptive paragraph reflow
+
+### Done
+- **Paragraph lines now reflow adaptively with font/layout changes.** `lib/core/markdown/block_parser.dart` now joins consecutive non-blank lines with spaces instead of forced `\n` breaks.
+- **Page count can now decrease when text fits more per line.** Reader pagination is no longer pinned to source line-wrap positions for normal paragraphs.
+- **Tests updated for new parser behavior.** `test/block_parser_test.dart` now expects paragraph line-join reflow semantics.
+- **Validation complete.** `flutter analyze` reports no issues; `flutter test` passes `50/50`.
+
+### Not yet done
+- Optional future enhancement: support explicit hard line-break markdown semantics (for poetry/verse) while keeping default prose reflow.
+
+## 2026-04-19 — Hotfix: contained font-family matrix
+
+### Done
+- **Font-family selector now stays inside the settings panel.** Replaced the horizontal segmented control with a fixed `3x2` in-panel matrix in `lib/views/reader/reader_settings_sheet.dart`.
+- **Rounded-corner tile style applied.** Each family option now uses a 4-corner rounded button (12 px radius) with selected/unselected styling aligned to existing theme tokens.
+- **Validation complete.** `flutter analyze` reports no issues; `flutter test` passes `50/50`.
+
+### Not yet done
+- Optional polish: preview each font family in its own button text (currently labels use the panel text style for consistency).
+
+## 2026-04-19 — Hotfix: expanded reading fonts
+
+### Done
+- **Reader font choices expanded to reading-focused families only.** `lib/core/reader_settings.dart` now offers: Times New Roman, Georgia, Garamond, Cambria, Sans Serif, and Verdana.
+- **Requested families included explicitly.** "Times New Roman" and "Sans Serif" are now first-class options in the reader settings panel.
+- **Default family updated.** New default reader font is `Times New Roman`.
+- **Validation complete.** `flutter analyze` reports no issues; `flutter test` passes `50/50`.
+
+### Not yet done
+- Optional future step: platform-specific font fallback chains (to avoid visual differences when a family is unavailable on a device).
+
+## 2026-04-19 — Hotfix: import-selected-books library flow
+
+### Done
+- **Library now supports selecting files instead of picking a source folder.** `LibraryRepository` gained `importBooks()` and `LibraryView` now triggers file import via the `Import books` action.
+- **Imported files are persisted in a dedicated library folder.** `lib/data/library_folder.dart` now defaults to `Documents/VoxLibrary` on Windows when available (fallback to app documents on other platforms).
+- **Import copies `.md` files into library storage.** `lib/data/library_repository.dart` now opens a multi-file picker, copies selected files, and auto-resolves duplicate names using `name (n).md`.
+- **Library empty state and toolbar copy updated.** UI now explains import-and-persist behavior and points users to the managed library folder.
+- **Validation complete.** `flutter analyze` reports no issues; `flutter test` passes `48/48`.
+
+### Not yet done
+- Folder-selection flow is still present in the repository abstraction for backward compatibility, but the active UI now uses import-first workflow.
+
+## 2026-04-19 — Hotfix: left-floating panel + 6-book row
+
+### Done
+- **Settings panel corrected to physical left.** `lib/views/reader/reader_settings_sheet.dart` now anchors with `Positioned(left: ...)` to avoid ambiguous side placement.
+- **Floating visual vibe added.** Settings now render as a rounded floating card with shadow, inset top/bottom margins, and slide+fade+slight-scale transition.
+- **Library now targets 6 books per row on desktop.** `lib/views/library_view.dart` uses width breakpoints with `6` columns for wide layouts (`>= 980 px`), with smaller responsive fallbacks.
+- **Validation complete.** `flutter analyze` reports no issues; `flutter test` passes `48/48`.
+
+### Not yet done
+- Final cover rendering (image thumbnails/spines) is still pending; current book tiles remain placeholders.
+
+## 2026-04-19 — Hotfix: library book-card grid
+
+### Done
+- **Library front view now uses book-like cards instead of list rows.** `lib/views/library_view.dart` switched to a responsive `GridView.builder` with up to 4 columns.
+- **Card shape and layout prepared for covers.** Each entry now renders as a portrait tile (`childAspectRatio: 0.72`) with a placeholder cover area, title, file name, and per-book progress strip.
+- **Actions preserved per item.** Rename/delete remain available from each card via the same `More` popup menu.
+- **Validation complete.** `flutter analyze` reports no issues; `flutter test` passes `48/48`.
+
+### Not yet done
+- Real cover thumbnails are not wired yet; cards currently use a styled placeholder area for upcoming cover integration.
+
+## 2026-04-19 — Hotfix: left-side settings panel
+
+### Done
+- **Settings now opens from the left as a pop panel.** `lib/views/reader/reader_settings_sheet.dart` switched from `showModalBottomSheet` to `showGeneralDialog` with a slide-in transition from the left.
+- **Backdrop still fades while reading UI stays visible behind it.** The dialog now uses a dim barrier (`Colors.black54`) and dismiss-on-backdrop behavior.
+- **All configs remain accessible in one panel.** The settings content is now full-height with an internal `Expanded + SingleChildScrollView`, plus a header and close button.
+- **Validation complete.** `flutter analyze` reports no issues; `flutter test` passes `48/48`.
+
+### Not yet done
+- Optional polish: add a compact desktop-only visual style variant (e.g., stronger panel border/shadow theming and section grouping cards).
+
+## 2026-04-19 — Hotfix: settings sheet bounds + TTS debug modes
+
+### Done
+- **Reader settings sheet now has explicit size restraints.** `lib/views/reader/reader_settings_sheet.dart` now uses `showModalBottomSheet(... useSafeArea: true, constraints: BoxConstraints(maxWidth: 760))` and wraps content in `SizedBox(height: viewport * 0.9)`. This prevents lower controls from rendering outside the screen.
+- **Overflow-proof segmented controls.** Font-size, font-family, and theme segmented controls are each wrapped in horizontal `SingleChildScrollView` containers so narrow layouts no longer clip controls.
+- **TTS crash debugging harness added.** New `lib/tts/simulated_tts_engine.dart` (event-driven mock engine) and `lib/tts/logging_tts_engine.dart` (call/event tracing). `lib/main.dart` now supports `--dart-define=VOX_TTS=real|mock|noop` and `--dart-define=VOX_TTS_TRACE=true` for side-by-side reproduction.
+- **Debug docs added.** `README.md` now includes copy-paste commands for mock vs real TTS crash isolation and trace interpretation.
+- **Validation complete.** `flutter analyze` reports no issues; `flutter test` passes `47/47`.
+
+### Not yet done
+- Desktop-specific visual restyling of the settings sheet (if a less mobile-style container/chrome is desired) is not implemented in this hotfix.
+- Persisting the selected runtime TTS mode between launches is not implemented (current mode selection is intentionally runtime-flag based for debugging).
+
+## 2026-04-19 — Hotfix: playback crash-hardening
+
+### Done
+- **Chunked utterance playback to reduce native TTS stress.** `lib/tts/playback_controller.dart` now sends at most 280 chars per `speak` call, cut on whitespace where possible. This avoids handing very large paragraph strings to the Windows TTS plugin at once.
+- **Completion fallback when boundary callbacks are missing.** On each `TtsCompleted`, cursor progress is now advanced by the utterance chunk length if no boundary events arrived, then playback continues in the same block until fully consumed. This prevents stalls and keeps progress monotonic.
+- **Safer engine auto-selection in debug.** `lib/main.dart` now accepts `VOX_TTS=auto` (default) and resolves to `mock` on Windows debug builds, `real` otherwise. Explicit `VOX_TTS=real|mock|noop` still overrides this.
+- **Regression test coverage.** `test/playback_controller_test.dart` gained a long-block test that verifies chunking and completion-only advancement behavior.
+- **Validation complete.** `flutter analyze` reports no issues; `flutter test` passes `48/48`.
+
+### Not yet done
+- If a hard native process crash still occurs specifically in `VOX_TTS=real` mode after chunking, the next step is isolated plugin-level reproduction and native crash dump capture.
+
 ## 2026-04-18 — PR 6: TTS bootstrap + word highlight + playback bar
 
 ### Done

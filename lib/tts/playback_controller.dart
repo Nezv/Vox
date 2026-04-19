@@ -32,8 +32,11 @@ class PlaybackController extends ChangeNotifier {
   int _cursorBlockIndex = 0;
   int _cursorCharOffset = 0;
   int _utteranceStart = 0;
+  int _utteranceLength = 0;
   bool _isPlaying = false;
   (int, int)? _currentWordRange;
+
+  static const int _maxUtteranceChars = 280;
 
   // Public getters --------------------------------------------------------
 
@@ -122,6 +125,7 @@ class PlaybackController extends ChangeNotifier {
 
   Future<void> play() async {
     if (_blocks.isEmpty) return;
+    if (_isPlaying) return;
     if (atEnd) {
       _cursorBlockIndex = 0;
       _cursorCharOffset = 0;
@@ -151,6 +155,7 @@ class PlaybackController extends ChangeNotifier {
     final words = (delta.inMilliseconds / 1000 * _wordsPerSecond).round();
     if (words == 0) return;
     final wasPlaying = _isPlaying;
+    _isPlaying = false;
     await _engine.stop();
     if (words > 0) {
       _advanceByWords(words);
@@ -158,19 +163,35 @@ class PlaybackController extends ChangeNotifier {
       _rewindByWords(-words);
     }
     _currentWordRange = null;
+    _isPlaying = wasPlaying;
     notifyListeners();
     if (wasPlaying) {
       await _speakFromCursor();
     }
   }
 
+  void restoreCursor(int blockIndex, int charOffset) {
+    _cursorBlockIndex = blockIndex.clamp(0, _blocks.length);
+    _cursorCharOffset = charOffset;
+    notifyListeners();
+  }
+
+  void reseedWps(double wps) {
+    _wordsPerSecond = wps;
+    _spokenWordsForWps = 0;
+    _spokenClock.reset();
+    notifyListeners();
+  }
+
   Future<void> jumpToBlock(int blockIndex) async {
     if (blockIndex < 0 || blockIndex >= _blocks.length) return;
     final wasPlaying = _isPlaying;
+    _isPlaying = false;
     await _engine.stop();
     _cursorBlockIndex = blockIndex;
     _cursorCharOffset = 0;
     _currentWordRange = null;
+    _isPlaying = wasPlaying;
     notifyListeners();
     if (wasPlaying) await _speakFromCursor();
   }
@@ -201,10 +222,26 @@ class PlaybackController extends ChangeNotifier {
       notifyListeners();
       return;
     }
+
+    final blockText = _blocks[_cursorBlockIndex].text;
+    if (_cursorCharOffset >= blockText.length) {
+      _advanceBlock();
+      await _speakFromCursor();
+      return;
+    }
+
     _utteranceStart = _cursorCharOffset;
-    final text =
-        _blocks[_cursorBlockIndex].text.substring(_cursorCharOffset);
-    await _engine.speak(text);
+    final remaining = blockText.substring(_cursorCharOffset);
+    final text = _takeUtteranceChunk(remaining);
+    _utteranceLength = text.length;
+    try {
+      await _engine.speak(text);
+    } catch (_) {
+      _isPlaying = false;
+      _spokenClock.stop();
+      _currentWordRange = null;
+      notifyListeners();
+    }
   }
 
   void _onEvent(TtsEvent event) {
@@ -222,6 +259,22 @@ class PlaybackController extends ChangeNotifier {
         notifyListeners();
         break;
       case TtsCompleted():
+        if (_cursorBlockIndex < _blocks.length && _isSpeakable(_cursorBlockIndex)) {
+          final blockLength = _blocks[_cursorBlockIndex].text.length;
+          final minProgress =
+              (_utteranceStart + _utteranceLength).clamp(0, blockLength);
+          if (_cursorCharOffset < minProgress) {
+            _cursorCharOffset = minProgress;
+          }
+          if (_cursorCharOffset < blockLength) {
+            _currentWordRange = null;
+            notifyListeners();
+            if (_isPlaying) {
+              _speakFromCursor();
+            }
+            break;
+          }
+        }
         _advanceBlock();
         if (_isPlaying && _cursorBlockIndex < _blocks.length) {
           _speakFromCursor();
@@ -343,6 +396,21 @@ class PlaybackController extends ChangeNotifier {
   }
 
   static final _wordPattern = RegExp(r'\S+');
+
+  String _takeUtteranceChunk(String text) {
+    if (text.length <= _maxUtteranceChars) return text;
+    final candidate = text.substring(0, _maxUtteranceChars);
+    var cut = -1;
+    for (var i = candidate.length - 1; i >= candidate.length ~/ 2; i--) {
+      final ch = candidate.codeUnitAt(i);
+      if (ch == 32 || ch == 10 || ch == 9) {
+        cut = i + 1;
+        break;
+      }
+    }
+    if (cut <= 0) cut = _maxUtteranceChars;
+    return text.substring(0, cut);
+  }
 
   List<(int, int)> _computeWordRanges(Block block) {
     if (block.kind == BlockKind.blank) return const [];

@@ -8,11 +8,17 @@ class PlaybackBar extends StatelessWidget {
     required this.controller,
     required this.onPreviousPage,
     required this.onNextPage,
+    this.isTrackingPageView = true,
+    this.onEnableTrackMode = _noop,
   });
 
   final PlaybackController controller;
   final VoidCallback onPreviousPage;
   final VoidCallback onNextPage;
+  final bool isTrackingPageView;
+  final VoidCallback onEnableTrackMode;
+
+  static void _noop() {}
 
   @override
   Widget build(BuildContext context) {
@@ -80,6 +86,13 @@ class PlaybackBar extends StatelessWidget {
                     tooltip: 'Next page',
                     onPressed: onNextPage,
                   ),
+                  IconButton(
+                    tooltip: isTrackingPageView
+                        ? 'Page tracking active'
+                        : 'Return to track mode',
+                    onPressed: isTrackingPageView ? null : onEnableTrackMode,
+                    icon: _TrackModeIcon(active: isTrackingPageView),
+                  ),
                 ],
               ),
             ],
@@ -95,4 +108,59 @@ class PlaybackBar extends StatelessWidget {
     final h = d.inHours;
     return h > 0 ? '$h:$m:$s' : '$m:$s';
   }
+}
+
+class _TrackModeIcon extends StatelessWidget {
+  const _TrackModeIcon({required this.active});
+
+  final bool active;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final color = active ? scheme.primary : scheme.onSurface;
+    return CustomPaint(
+      size: const Size(22, 22),
+      painter: _TrackModeIconPainter(color: color),
+    );
+  }
+}
+
+class _TrackModeIconPainter extends CustomPainter {
+  const _TrackModeIconPainter({required this.color});
+
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final linePaint = Paint()
+      ..color = color
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.8
+      ..strokeCap = StrokeCap.round;
+
+    const x0 = 2.5;
+    final x1 = size.width - 2.5;
+    final yTop = size.height * 0.26;
+    final yMid = size.height * 0.5;
+    final yBot = size.height * 0.74;
+
+    canvas.drawLine(Offset(x0, yTop), Offset(x1, yTop), linePaint);
+    canvas.drawLine(Offset(x0, yMid), Offset(x1, yMid), linePaint);
+    canvas.drawLine(Offset(x0, yBot), Offset(x1, yBot), linePaint);
+
+    final triangle = Path()
+      ..moveTo(size.width * 0.44, size.height * 0.37)
+      ..lineTo(size.width * 0.61, size.height * 0.5)
+      ..lineTo(size.width * 0.44, size.height * 0.63)
+      ..close();
+    final trianglePaint = Paint()
+      ..color = color
+      ..style = PaintingStyle.fill;
+    canvas.drawPath(triangle, trianglePaint);
+  }
+
+  @override
+  bool shouldRepaint(covariant _TrackModeIconPainter oldDelegate) =>
+      oldDelegate.color != color;
 }

@@ -27,6 +27,18 @@ class NoopTtsEngine implements TtsEngine {
   Future<void> setRate(double rate) async {}
 
   @override
+  Future<List<String>> getLanguages() async => const [];
+
+  @override
+  Future<List<Map<String, String>>> getVoices() async => const [];
+
+  @override
+  Future<void> setLanguage(String language) async {}
+
+  @override
+  Future<void> setVoice(Map<String, String> voice) async {}
+
+  @override
   Future<void> dispose() async {
     await _controller.close();
   }

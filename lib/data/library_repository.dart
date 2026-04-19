@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:file_picker/file_picker.dart';
 import 'package:path/path.dart' as p;
 
 import '../models/book.dart';
@@ -7,6 +8,7 @@ import 'library_folder.dart';
 
 abstract class LibraryRepository {
   Future<List<Book>> loadBooks();
+  Future<int> importBooks();
   Future<bool> chooseFolder();
   Future<void> delete(Book book);
   Future<Book> rename(Book book, String newBaseName);
@@ -26,6 +28,47 @@ class FileSystemLibraryRepository implements LibraryRepository {
   Future<bool> chooseFolder() => _folder.pick();
 
   @override
+  Future<int> importBooks() async {
+    final picked = await FilePicker.platform.pickFiles(
+      dialogTitle: 'Import markdown books',
+      type: FileType.custom,
+      allowedExtensions: const ['md'],
+      allowMultiple: true,
+    );
+    if (picked == null || picked.files.isEmpty) return 0;
+
+    final folderPath = await _folder.resolve();
+    final dir = Directory(folderPath);
+    if (!await dir.exists()) {
+      await dir.create(recursive: true);
+    }
+
+    var imported = 0;
+    final seen = <String>{};
+    for (final selected in picked.files) {
+      final sourcePath = selected.path;
+      if (sourcePath == null || sourcePath.isEmpty) continue;
+      if (!seen.add(sourcePath)) continue;
+
+      final source = File(sourcePath);
+      if (!await source.exists()) continue;
+      if (p.extension(source.path).toLowerCase() != '.md') continue;
+
+      final targetPath = await _nextAvailableImportPath(
+        folderPath,
+        p.basenameWithoutExtension(source.path),
+      );
+      if (_samePath(source.path, targetPath)) {
+        continue;
+      }
+      await source.copy(targetPath);
+      imported++;
+    }
+
+    return imported;
+  }
+
+  @override
   Future<List<Book>> loadBooks() async {
     final folderPath = await _folder.resolve();
     final dir = Directory(folderPath);
@@ -36,7 +79,7 @@ class FileSystemLibraryRepository implements LibraryRepository {
     for (final entry in entries) {
       if (entry is! File) continue;
       if (p.extension(entry.path).toLowerCase() != '.md') continue;
-      final title = await _readTitle(entry);
+      final title = p.basenameWithoutExtension(entry.path);
       books.add(Book(path: entry.path, title: title));
     }
 
@@ -67,23 +110,29 @@ class FileSystemLibraryRepository implements LibraryRepository {
       throw StateError('A book named "$trimmed.md" already exists');
     }
     final renamed = await File(book.path).rename(newPath);
-    final title = await _readTitle(renamed);
+    final title = p.basenameWithoutExtension(renamed.path);
     return Book(path: renamed.path, title: title);
   }
 
-  Future<String> _readTitle(File file) async {
-    try {
-      final lines = await file.readAsLines();
-      for (final raw in lines) {
-        final line = raw.trimLeft();
-        if (line.startsWith('# ')) {
-          final title = line.substring(2).trim();
-          if (title.isNotEmpty) return title;
-        }
+  Future<String> _nextAvailableImportPath(String dir, String rawBaseName) async {
+    final baseName = rawBaseName.trim().isEmpty ? 'book' : rawBaseName.trim();
+    var attempt = 0;
+    while (true) {
+      final suffix = attempt == 0 ? '' : ' ($attempt)';
+      final candidate = p.join(dir, '$baseName$suffix.md');
+      if (!await File(candidate).exists()) {
+        return candidate;
       }
-    } catch (_) {
-      // Unreadable file — fall through to filename.
+      attempt++;
     }
-    return p.basenameWithoutExtension(file.path);
+  }
+
+  bool _samePath(String a, String b) {
+    final left = p.normalize(a);
+    final right = p.normalize(b);
+    if (Platform.isWindows) {
+      return left.toLowerCase() == right.toLowerCase();
+    }
+    return left == right;
   }
 }

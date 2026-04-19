@@ -58,10 +58,12 @@ class PagePiece {
     required this.kind,
     required this.text,
     this.blockCharOffset,
+    this.inlineStyles = const [],
   });
 
   final BlockKind kind;
   final String text;
+  final List<InlineStyleRange> inlineStyles;
 
   /// Offset of this piece's text within the full source block. `0` for
   /// headings, the accumulated prefix length for paragraphs split across
@@ -74,10 +76,12 @@ class PagePiece {
       (other is PagePiece &&
           other.kind == kind &&
           other.text == text &&
-          other.blockCharOffset == blockCharOffset);
+          other.blockCharOffset == blockCharOffset &&
+          _inlineStyleRangesEqual(other.inlineStyles, inlineStyles));
 
   @override
-  int get hashCode => Object.hash(kind, text, blockCharOffset);
+  int get hashCode =>
+      Object.hash(kind, text, blockCharOffset, Object.hashAll(inlineStyles));
 
   @override
   String toString() =>
@@ -139,8 +143,13 @@ List<ReaderPage> paginateBlocks({
       case BlockKind.h3:
         final style = styles.styleFor(block.kind);
         final gap = styles.gapFor(block.kind);
-        final height =
-            _measureHeight(block.text, style, pageSize.width) + gap;
+        final height = _measureHeight(
+              block.text,
+              style,
+              pageSize.width,
+              inlineStyles: block.inlineStyles,
+            ) +
+            gap;
         if (height > remaining() && pieces.isNotEmpty) {
           finalize();
         }
@@ -148,6 +157,11 @@ List<ReaderPage> paginateBlocks({
           kind: block.kind,
           text: block.text,
           blockCharOffset: 0,
+          inlineStyles: _sliceInlineStyles(
+            block.inlineStyles,
+            0,
+            block.text.length,
+          ),
         ));
         pieceBlockIndexes.add(i);
         blockIndexes.add(i);
@@ -170,13 +184,24 @@ List<ReaderPage> paginateBlocks({
         var text = block.text;
         var offsetIntoBlock = 0;
         while (text.isNotEmpty) {
-          final full = _measureHeight(text, styles.paragraph, pageSize.width);
+          final inlineStyles = _sliceInlineStyles(
+            block.inlineStyles,
+            offsetIntoBlock,
+            offsetIntoBlock + text.length,
+          );
+          final full = _measureHeight(
+            text,
+            styles.paragraph,
+            pageSize.width,
+            inlineStyles: inlineStyles,
+          );
           final room = remaining();
           if (full <= room) {
             pieces.add(PagePiece(
               kind: BlockKind.paragraph,
               text: text,
               blockCharOffset: offsetIntoBlock,
+              inlineStyles: inlineStyles,
             ));
             pieceBlockIndexes.add(i);
             blockIndexes.add(i);
@@ -189,6 +214,7 @@ List<ReaderPage> paginateBlocks({
               kind: BlockKind.paragraph,
               text: text,
               blockCharOffset: offsetIntoBlock,
+              inlineStyles: inlineStyles,
             ));
             pieceBlockIndexes.add(i);
             blockIndexes.add(i);
@@ -201,6 +227,7 @@ List<ReaderPage> paginateBlocks({
             styles.paragraph,
             pageSize.width,
             room,
+            inlineStyles: inlineStyles,
           );
           if (split.$1.isEmpty) {
             finalize();
@@ -210,6 +237,11 @@ List<ReaderPage> paginateBlocks({
             kind: BlockKind.paragraph,
             text: split.$1,
             blockCharOffset: offsetIntoBlock,
+            inlineStyles: _sliceInlineStyles(
+              block.inlineStyles,
+              offsetIntoBlock,
+              offsetIntoBlock + split.$1.length,
+            ),
           ));
           pieceBlockIndexes.add(i);
           blockIndexes.add(i);
@@ -239,9 +271,14 @@ int findSpreadForBlock({
   return 0;
 }
 
-double _measureHeight(String text, TextStyle style, double width) {
+double _measureHeight(
+  String text,
+  TextStyle style,
+  double width, {
+  List<InlineStyleRange> inlineStyles = const [],
+}) {
   final tp = TextPainter(
-    text: TextSpan(text: text, style: style),
+    text: _buildMeasuredTextSpan(text, style, inlineStyles),
     textDirection: TextDirection.ltr,
   )..layout(maxWidth: width);
   final h = tp.height;
@@ -253,11 +290,12 @@ double _measureHeight(String text, TextStyle style, double width) {
   String text,
   TextStyle style,
   double width,
-  double maxHeight,
-) {
+  double maxHeight, {
+  List<InlineStyleRange> inlineStyles = const [],
+}) {
   if (maxHeight <= 0) return ('', text);
   final tp = TextPainter(
-    text: TextSpan(text: text, style: style),
+    text: _buildMeasuredTextSpan(text, style, inlineStyles),
     textDirection: TextDirection.ltr,
   )..layout(maxWidth: width);
 
@@ -280,3 +318,80 @@ double _measureHeight(String text, TextStyle style, double width) {
 }
 
 bool _isBreak(int c) => c == 0x20 || c == 0x0A || c == 0x09;
+
+TextSpan _buildMeasuredTextSpan(
+  String text,
+  TextStyle baseStyle,
+  List<InlineStyleRange> inlineStyles,
+) {
+  if (inlineStyles.isEmpty || text.isEmpty) {
+    return TextSpan(text: text, style: baseStyle);
+  }
+
+  final boundaries = <int>{0, text.length};
+  for (final range in inlineStyles) {
+    boundaries.add(range.start.clamp(0, text.length));
+    boundaries.add(range.end.clamp(0, text.length));
+  }
+  final cuts = boundaries.toList()..sort();
+  final spans = <TextSpan>[];
+  for (var i = 0; i < cuts.length - 1; i++) {
+    final start = cuts[i];
+    final end = cuts[i + 1];
+    if (start >= end) continue;
+
+    var bold = false;
+    var italic = false;
+    for (final range in inlineStyles) {
+      if (range.start < end && range.end > start) {
+        bold = bold || range.bold;
+        italic = italic || range.italic;
+      }
+    }
+
+    spans.add(TextSpan(
+      text: text.substring(start, end),
+      style: baseStyle.copyWith(
+        fontWeight: bold ? FontWeight.w700 : null,
+        fontStyle: italic ? FontStyle.italic : null,
+      ),
+    ));
+  }
+
+  return TextSpan(style: baseStyle, children: spans);
+}
+
+List<InlineStyleRange> _sliceInlineStyles(
+  List<InlineStyleRange> ranges,
+  int start,
+  int end,
+) {
+  if (ranges.isEmpty || start >= end) return const [];
+  final sliced = <InlineStyleRange>[];
+  for (final range in ranges) {
+    if (range.end <= start || range.start >= end) {
+      continue;
+    }
+    final localStart = (range.start < start ? start : range.start) - start;
+    final localEnd = (range.end > end ? end : range.end) - start;
+    if (localStart >= localEnd) continue;
+    sliced.add(InlineStyleRange(
+      localStart,
+      localEnd,
+      bold: range.bold,
+      italic: range.italic,
+    ));
+  }
+  return sliced;
+}
+
+bool _inlineStyleRangesEqual(
+  List<InlineStyleRange> a,
+  List<InlineStyleRange> b,
+) {
+  if (a.length != b.length) return false;
+  for (var i = 0; i < a.length; i++) {
+    if (a[i] != b[i]) return false;
+  }
+  return true;
+}
