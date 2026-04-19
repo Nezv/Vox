@@ -128,40 +128,17 @@ class _AppShellState extends State<AppShell> {
   }
 
   Future<void> _boot() async {
-    final results = await Future.wait([
-      widget.stateRepository.load(),
-      widget.stateRepository.loadAllProgress(),
-    ]);
-    final saved = results[0] as ReadingState?;
-    final progress = results[1] as Map<String, double>;
-    if (!mounted) return;
-    _bookProgress = progress;
-    if (saved == null) {
-      setState(() => _booting = false);
-      return;
-    }
     try {
-      final books = await widget.repository.loadBooks();
+      final progress = await widget.stateRepository.loadAllProgress();
       if (!mounted) return;
-      final match = books.where((b) => b.path == saved.bookPath).toList();
-      if (match.isEmpty) {
-        setState(() => _booting = false);
-        return;
-      }
       setState(() {
-        _selected = match.first;
-        _initialPage = saved.pageIndex;
-        _initialBlockIndex = saved.blockIndex;
-        _initialCharOffset = saved.charOffset;
-        _currentPage = saved.pageIndex;
-        _currentBlockIndex = saved.blockIndex;
-        _currentCharOffset = saved.charOffset;
-        _currentFraction = saved.progressFraction;
-        _view = View.book;
+        _bookProgress = progress;
         _booting = false;
       });
     } catch (_) {
-      if (mounted) setState(() => _booting = false);
+      if (mounted) {
+        setState(() => _booting = false);
+      }
     }
   }
 

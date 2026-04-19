@@ -55,19 +55,12 @@ class Block {
 List<Block> parseMarkdownBlocks(String source) {
   final blocks = <Block>[];
   final lines = source.split('\n');
-  final paragraph = <_ParagraphLine>[];
+  final paragraph = <String>[];
   var sawBlank = false;
 
   void flushParagraph() {
     if (paragraph.isEmpty) return;
-    final out = StringBuffer();
-    for (var i = 0; i < paragraph.length; i++) {
-      if (i > 0) {
-        out.write(paragraph[i - 1].hardBreakAfter ? '\n' : ' ');
-      }
-      out.write(paragraph[i].text);
-    }
-    final parsed = _parseInlineMarkdown(out.toString());
+    final parsed = _parseInlineMarkdown(paragraph.join('\n'));
     blocks.add(Block(
       BlockKind.paragraph,
       parsed.text,
@@ -98,7 +91,7 @@ List<Block> parseMarkdownBlocks(String source) {
     }
 
     flushBlank();
-    paragraph.add(_paragraphLineFromRaw(raw));
+    paragraph.add(raw.trimRight());
   }
 
   flushParagraph();
@@ -246,32 +239,6 @@ bool _inlineStylesEqual(List<InlineStyleRange> a, List<InlineStyleRange> b) {
     if (a[i] != b[i]) return false;
   }
   return true;
-}
-
-_ParagraphLine _paragraphLineFromRaw(String raw) {
-  final trailingSpaces = raw.length - raw.trimRight().length;
-  var trimmedRight = raw.trimRight();
-  var hardBreakAfter = trailingSpaces >= 2;
-
-  if (trimmedRight.endsWith(r'\')) {
-    hardBreakAfter = true;
-    trimmedRight = trimmedRight.substring(0, trimmedRight.length - 1);
-  }
-
-  return _ParagraphLine(
-    text: trimmedRight.trimLeft(),
-    hardBreakAfter: hardBreakAfter,
-  );
-}
-
-class _ParagraphLine {
-  const _ParagraphLine({
-    required this.text,
-    required this.hardBreakAfter,
-  });
-
-  final String text;
-  final bool hardBreakAfter;
 }
 
 class _InlineParseResult {

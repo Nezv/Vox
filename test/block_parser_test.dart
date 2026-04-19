@@ -17,33 +17,33 @@ void main() {
       ]);
     });
 
-    test('joins consecutive non-blank lines for adaptive reflow', () {
+    test('joins consecutive non-blank lines preserving line breaks', () {
       final blocks = parseMarkdownBlocks('alpha\nbeta\ngamma');
-      expect(blocks, [const Block(BlockKind.paragraph, 'alpha beta gamma')]);
+      expect(blocks, [const Block(BlockKind.paragraph, 'alpha\nbeta\ngamma')]);
     });
 
-    test('line breaks inside paragraph are reflowed into spaces', () {
+    test('line breaks inside paragraph are preserved', () {
       final blocks = parseMarkdownBlocks('line1\nline2\n\nline3');
       expect(blocks, [
-        const Block(BlockKind.paragraph, 'line1 line2'),
+        const Block(BlockKind.paragraph, 'line1\nline2'),
         const Block(BlockKind.blank, ''),
         const Block(BlockKind.paragraph, 'line3'),
       ]);
     });
 
-    test('two trailing spaces create an explicit hard line break', () {
+    test('two trailing spaces keep the source line break', () {
       final blocks = parseMarkdownBlocks('line1  \nline2');
       expect(blocks, [const Block(BlockKind.paragraph, 'line1\nline2')]);
     });
 
-    test('trailing backslash creates an explicit hard line break', () {
+    test('trailing backslash is preserved literally', () {
       final blocks = parseMarkdownBlocks('line1\\\nline2');
-      expect(blocks, [const Block(BlockKind.paragraph, 'line1\nline2')]);
+      expect(blocks, [const Block(BlockKind.paragraph, 'line1\\\nline2')]);
     });
 
-    test('hard break applies only to marked line in mixed paragraph', () {
+    test('mixed paragraph keeps original line breaks', () {
       final blocks = parseMarkdownBlocks('one  \ntwo\nthree');
-      expect(blocks, [const Block(BlockKind.paragraph, 'one\ntwo three')]);
+      expect(blocks, [const Block(BlockKind.paragraph, 'one\ntwo\nthree')]);
     });
 
     test('splits paragraphs on blank lines and collapses runs of blanks', () {

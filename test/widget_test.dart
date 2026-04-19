@@ -198,30 +198,27 @@ void main() {
     expect(find.text('Empty book'), findsOneWidget);
   });
 
-  testWidgets('Resumes into the last book when saved state exists',
+  testWidgets('Starts in library view even when saved state exists',
       (tester) async {
     final repo = _FakeRepo([
       const Book(path: '/fake/Vox/alpha.md', title: 'Alpha'),
       const Book(path: '/fake/Vox/beta.md', title: 'Beta'),
     ]);
-    final content = _FakeContentRepo({
-      '/fake/Vox/beta.md': '# Beta\n\nBeta body paragraph.',
-    });
     final state = _FakeStateRepo(
       const ReadingState(bookPath: '/fake/Vox/beta.md', pageIndex: 0),
     );
 
     await tester.pumpWidget(
-      _buildApp(repo: repo, content: content, state: state),
+      _buildApp(repo: repo, state: state),
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('Beta body paragraph.'), findsOneWidget);
-    expect(find.byTooltip('Back to library'), findsOneWidget);
+    expect(find.text('Alpha'), findsOneWidget);
+    expect(find.text('Beta'), findsOneWidget);
+    expect(find.byTooltip('Back to library'), findsNothing);
   });
 
-  testWidgets('Invalid saved path falls back to the library',
-      (tester) async {
+  testWidgets('Invalid saved path falls back to the library', (tester) async {
     final repo = _FakeRepo([
       const Book(path: '/fake/Vox/alpha.md', title: 'Alpha'),
     ]);

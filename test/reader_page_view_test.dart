@@ -19,13 +19,11 @@ Widget _harness(Widget child) => MaterialApp(
 void main() {
   testWidgets('renders plain SelectableText when no highlight', (tester) async {
     const page = ReaderPage(
-      pieces: [
-        PagePiece(
-          kind: BlockKind.paragraph,
-          text: 'alpha beta gamma',
-          blockCharOffset: 0,
-        )
-      ],
+      pieces: [PagePiece(
+        kind: BlockKind.paragraph,
+        text: 'alpha beta gamma',
+        blockCharOffset: 0,
+      )],
       pieceBlockIndexes: [0],
       blockIndexes: [0],
     );
@@ -38,17 +36,15 @@ void main() {
   testWidgets('applies inline markdown styles in paragraph spans',
       (tester) async {
     const page = ReaderPage(
-      pieces: [
-        PagePiece(
-          kind: BlockKind.paragraph,
-          text: 'alpha bold and italic',
-          blockCharOffset: 0,
-          inlineStyles: [
-            InlineStyleRange(6, 10, bold: true),
-            InlineStyleRange(15, 21, italic: true),
-          ],
-        )
-      ],
+      pieces: [PagePiece(
+        kind: BlockKind.paragraph,
+        text: 'alpha bold and italic',
+        blockCharOffset: 0,
+        inlineStyles: [
+          InlineStyleRange(6, 10, bold: true),
+          InlineStyleRange(15, 21, italic: true),
+        ],
+      )],
       pieceBlockIndexes: [0],
       blockIndexes: [0],
     );
@@ -57,8 +53,7 @@ void main() {
       const ReaderPageView(page: page, styles: _styles),
     ));
 
-    final selectable =
-        tester.widget<SelectableText>(find.byType(SelectableText));
+    final selectable = tester.widget<SelectableText>(find.byType(SelectableText));
     final children = selectable.textSpan!.children!;
     expect(children, hasLength(4));
     expect((children[0] as TextSpan).text, 'alpha ');
@@ -72,13 +67,11 @@ void main() {
   testWidgets('highlight splits paragraph into three TextSpans',
       (tester) async {
     const page = ReaderPage(
-      pieces: [
-        PagePiece(
-          kind: BlockKind.paragraph,
-          text: 'alpha beta gamma',
-          blockCharOffset: 0,
-        )
-      ],
+      pieces: [PagePiece(
+        kind: BlockKind.paragraph,
+        text: 'alpha beta gamma',
+        blockCharOffset: 0,
+      )],
       pieceBlockIndexes: [0],
       blockIndexes: [0],
     );
@@ -91,8 +84,7 @@ void main() {
       ),
     ));
 
-    final selectable =
-        tester.widget<SelectableText>(find.byType(SelectableText));
+    final selectable = tester.widget<SelectableText>(find.byType(SelectableText));
     final span = selectable.textSpan!;
     final children = span.children!;
     expect(children, hasLength(3));
@@ -105,13 +97,11 @@ void main() {
   testWidgets('highlight offset respects blockCharOffset of split piece',
       (tester) async {
     const page = ReaderPage(
-      pieces: [
-        PagePiece(
-          kind: BlockKind.paragraph,
-          text: 'beta gamma',
-          blockCharOffset: 6,
-        )
-      ],
+      pieces: [PagePiece(
+        kind: BlockKind.paragraph,
+        text: 'beta gamma',
+        blockCharOffset: 6,
+      )],
       pieceBlockIndexes: [0],
       blockIndexes: [0],
     );
@@ -124,8 +114,7 @@ void main() {
       ),
     ));
 
-    final selectable =
-        tester.widget<SelectableText>(find.byType(SelectableText));
+    final selectable = tester.widget<SelectableText>(find.byType(SelectableText));
     final children = selectable.textSpan!.children!;
     expect(children, hasLength(2));
     expect((children[0] as TextSpan).text, 'beta');
